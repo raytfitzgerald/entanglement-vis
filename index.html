@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quantum Entanglement Geometry</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1117; color: #e6edf3; font-family: 'SF Mono', 'Fira Code', monospace;
+    overflow: hidden; height: 100vh; width: 100vw;
+  }
+  #canvas3d { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+
+  .panel {
+    position: absolute; background: rgba(13,17,23,0.88); border: 1px solid rgba(88,166,255,0.2);
+    border-radius: 10px; padding: 14px; backdrop-filter: blur(12px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  }
+
+  #info-panel { top: 14px; left: 14px; max-width: 320px; }
+  #info-panel h1 { font-size: 15px; color: #58a6ff; margin-bottom: 6px; font-weight: 600; }
+  #info-panel p { font-size: 11px; line-height: 1.5; color: #8b949e; margin-bottom: 6px; }
+  #info-panel .highlight { color: #e6edf3; }
+
+  #legend { top: 14px; right: 14px; font-size: 11px; }
+  #legend .row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+  #legend .swatch { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
+
+  #state-display {
+    top: 14px; left: 50%; transform: translateX(-50%);
+    text-align: center; min-width: 280px;
+  }
+  #state-display .state-vec {
+    font-size: 18px; font-weight: 600; letter-spacing: 0.5px;
+    margin-bottom: 6px; min-height: 26px;
+  }
+  #state-display .state-vec .ket { color: #58a6ff; }
+  #state-display .concurrence-row {
+    display: flex; align-items: baseline; justify-content: center; gap: 12px;
+  }
+  #state-display .c-value { font-size: 28px; font-weight: 700; }
+  #state-display .c-label { font-size: 10px; color: #8b949e; }
+  #state-display .c-bar-wrap {
+    width: 100%; height: 6px; background: rgba(88,166,255,0.15);
+    border-radius: 3px; margin-top: 6px; overflow: hidden;
+  }
+  #state-display .c-bar { height: 100%; border-radius: 3px; transition: width 0.05s; }
+
+  #distances { bottom: 120px; right: 14px; min-width: 240px; font-size: 11px; }
+  #distances h2 { font-size: 12px; color: #58a6ff; margin-bottom: 8px; font-weight: 600; }
+  #distances .dist-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 4px 0; border-bottom: 1px solid rgba(88,166,255,0.08);
+  }
+  #distances .dist-row:last-child { border-bottom: none; }
+  #distances .dist-label { color: #8b949e; display: flex; align-items: center; gap: 6px; }
+  #distances .dist-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+  #distances .dist-val { font-weight: 600; font-size: 13px; }
+  #distances .shortcut-note {
+    margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(88,166,255,0.15);
+    color: #8b949e; text-align: center; font-size: 10px;
+  }
+  #distances .shortcut-note em { color: #ff4466; font-style: normal; font-weight: 600; }
+  #distances .traveled-row { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(88,166,255,0.1); }
+  #distances .traveled-label { color: #8b949e; font-size: 10px; }
+  #distances .traveled-val { font-weight: 700; font-size: 15px; }
+  #distances .no-sep { color: #6e7681; font-size: 10px; font-style: italic; margin-top: 4px; }
+
+  #bloch-panel { bottom: 120px; left: 14px; display: flex; gap: 10px; }
+  .bloch-container { text-align: center; }
+  .bloch-container canvas { display: block; border-radius: 6px; }
+  .bloch-label { font-size: 10px; color: #8b949e; margin-top: 4px; }
+
+  #concurrence-graph { bottom: 120px; left: 50%; transform: translateX(-50%); }
+  #concurrence-graph canvas { border-radius: 6px; }
+  .graph-label { font-size: 10px; color: #8b949e; text-align: center; margin-top: 4px; }
+
+  .ctrl-bar {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 10px; align-items: center; padding: 8px 16px;
+    background: rgba(13,17,23,0.92); border: 1px solid rgba(88,166,255,0.2);
+    border-radius: 10px; backdrop-filter: blur(12px); flex-wrap: wrap; justify-content: center;
+  }
+  #endpoint-bar { bottom: 56px; }
+  #controls { bottom: 14px; }
+
+  .ctrl-bar label { font-size: 11px; color: #8b949e; }
+  .ctrl-bar select, .ctrl-bar button {
+    background: rgba(88,166,255,0.1); color: #e6edf3; border: 1px solid rgba(88,166,255,0.3);
+    border-radius: 5px; padding: 5px 10px; font-size: 11px; font-family: inherit; cursor: pointer;
+  }
+  .ctrl-bar button:hover { background: rgba(88,166,255,0.25); }
+  .ctrl-bar input[type=range] { width: 80px; accent-color: #58a6ff; }
+  .ctrl-bar .sep { width: 1px; height: 20px; background: rgba(88,166,255,0.15); }
+  .endpoint-label { font-size: 10px; color: #6e7681; max-width: 120px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<canvas id="canvas3d"></canvas>
+
+<div class="panel" id="info-panel">
+  <h1>Geometry of Entanglement</h1>
+  <p>Two-qubit state space (real amplitudes) is <span class="highlight">S³ in R⁴</span>,
+     projected here to 3D via stereographic projection.</p>
+  <p>The <span style="color:#6495ed">blue surface</span> is all <span class="highlight">product (separable) states</span> —
+     the Segre variety. Entangled states exist <span class="highlight">off this surface</span>.</p>
+  <p>Pick any two states — the <span style="color:#ff4466">red geodesic</span> is the shortest path on S³.
+     The <span style="color:#ffaa00">orange path</span> is the shortest staying separable (when possible).</p>
+</div>
+
+<div class="panel" id="state-display">
+  <div class="state-vec" id="state-vec-display">|ψ⟩ = 1.00<span class="ket">|00⟩</span></div>
+  <div class="concurrence-row">
+    <div>
+      <div class="c-value" id="concurrence-val" style="color:#58a6ff">0.000</div>
+      <div class="c-label">Concurrence</div>
+    </div>
+  </div>
+  <div class="c-bar-wrap"><div class="c-bar" id="c-bar" style="width:0%; background:#58a6ff"></div></div>
+</div>
+
+<div class="panel" id="legend">
+  <div class="row"><div class="swatch" style="background:rgba(100,149,237,0.4)"></div> Product states (Segre surface)</div>
+  <div class="row"><div class="swatch" style="background:#ff4466"></div> S³ geodesic (shortest overall)</div>
+  <div class="row"><div class="swatch" style="background:#ffaa00"></div> Separable geodesic (on surface)</div>
+  <div class="row"><div class="swatch" style="background:rgba(255,255,255,0.3)"></div> Distance to surface</div>
+</div>
+
+<div class="panel" id="distances">
+  <h2>Path Distances on S³</h2>
+  <div class="dist-row">
+    <span class="dist-label"><span class="dist-dot" style="background:#ff4466"></span> S³ geodesic</span>
+    <span class="dist-val" style="color:#ff4466" id="dist-geodesic">1.571</span>
+  </div>
+  <div class="dist-row" id="sep-dist-row">
+    <span class="dist-label"><span class="dist-dot" style="background:#ffaa00"></span> Separable geodesic</span>
+    <span class="dist-val" style="color:#ffaa00" id="dist-separable">2.221</span>
+  </div>
+  <div class="shortcut-note" id="shortcut-note">
+    Entanglement shortcut: <em id="shortcut-pct">29%</em> shorter
+  </div>
+  <div class="no-sep" id="no-sep-msg" style="display:none">
+    No separable path exists — one or both endpoints are entangled
+  </div>
+  <div class="traveled-row">
+    <div class="traveled-label">Distance traveled</div>
+    <div class="traveled-val" id="dist-traveled" style="color:#58a6ff">0.000</div>
+  </div>
+</div>
+
+<div class="panel" id="bloch-panel">
+  <div class="bloch-container">
+    <canvas id="blochA" width="140" height="140"></canvas>
+    <div class="bloch-label">Qubit A</div>
+  </div>
+  <div class="bloch-container">
+    <canvas id="blochB" width="140" height="140"></canvas>
+    <div class="bloch-label">Qubit B</div>
+  </div>
+</div>
+
+<div class="panel" id="concurrence-graph">
+  <canvas id="graphCanvas" width="240" height="100"></canvas>
+  <div class="graph-label">Concurrence along path</div>
+</div>
+
+<div class="ctrl-bar" id="endpoint-bar">
+  <label>Start</label>
+  <select id="startSelect">
+    <option value="|00⟩" selected>|00⟩</option>
+    <option value="|01⟩">|01⟩</option>
+    <option value="|10⟩">|10⟩</option>
+    <option value="|11⟩">|11⟩</option>
+    <option value="|+0⟩">|+0⟩ = (|00⟩+|10⟩)/√2</option>
+    <option value="|0+⟩">|0+⟩ = (|00⟩+|01⟩)/√2</option>
+    <option value="|++⟩">|++⟩ = ½(|00⟩+|01⟩+|10⟩+|11⟩)</option>
+    <option value="Bell">Bell Φ⁺ = (|00⟩+|11⟩)/√2</option>
+    <option value="random">Random</option>
+  </select>
+  <span class="endpoint-label" id="start-label"></span>
+  <div class="sep"></div>
+  <label>End</label>
+  <select id="endSelect">
+    <option value="|00⟩">|00⟩</option>
+    <option value="|01⟩">|01⟩</option>
+    <option value="|10⟩">|10⟩</option>
+    <option value="|11⟩" selected>|11⟩</option>
+    <option value="|+0⟩">|+0⟩ = (|00⟩+|10⟩)/√2</option>
+    <option value="|0+⟩">|0+⟩ = (|00⟩+|01⟩)/√2</option>
+    <option value="|++⟩">|++⟩ = ½(|00⟩+|01⟩+|10⟩+|11⟩)</option>
+    <option value="Bell">Bell Φ⁺ = (|00⟩+|11⟩)/√2</option>
+    <option value="random">Random</option>
+  </select>
+  <span class="endpoint-label" id="end-label"></span>
+  <div class="sep"></div>
+  <button id="randomBtn">🎲 Random Both</button>
+</div>
+
+<div class="ctrl-bar" id="controls">
+  <label>Path</label>
+  <select id="pathSelect">
+    <option value="geodesic">S³ geodesic (shortest)</option>
+    <option value="separable">Separable geodesic</option>
+    <option value="both">Both paths</option>
+  </select>
+  <button id="playBtn">▶ Play</button>
+  <button id="resetBtn">↺ Reset</button>
+  <label>Speed</label>
+  <input type="range" id="speedSlider" min="0.05" max="1" step="0.05" value="0.3">
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ── Constants ──
+const S2 = Math.SQRT2, S2I = 1 / S2;
+
+const PRESETS = {
+  '|00⟩': [1, 0, 0, 0],
+  '|01⟩': [0, 1, 0, 0],
+  '|10⟩': [0, 0, 1, 0],
+  '|11⟩': [0, 0, 0, 1],
+  '|+0⟩': [S2I, 0, S2I, 0],
+  '|0+⟩': [S2I, S2I, 0, 0],
+  '|++⟩': [0.5, 0.5, 0.5, 0.5],
+  'Bell':  [S2I, 0, 0, S2I],
+};
+
+// ── State ──
+let startState = [1, 0, 0, 0];
+let endState = [0, 0, 0, 1];
+let animT = 0, playing = false, speed = 0.3;
+let pathMode = 'geodesic';
+let concurrenceHistory = [];
+const MAX_HIST = 200;
+
+let geodesicLength = 0;
+let sepGeodesicLength = 0;
+let bothProductStates = true;
+
+// ── Math ──
+function stereo(a, b, c, d) {
+  const denom = 1 + a;
+  if (denom < 0.05) return null;
+  return new THREE.Vector3(b / denom, c / denom, d / denom);
+}
+
+function dot4(u, v) { return u[0]*v[0] + u[1]*v[1] + u[2]*v[2] + u[3]*v[3]; }
+
+function normalize4(v) {
+  const len = Math.sqrt(dot4(v, v));
+  return len > 1e-10 ? [v[0]/len, v[1]/len, v[2]/len, v[3]/len] : [1,0,0,0];
+}
+
+function concurrence(a, b, c, d) {
+  return 2 * Math.abs(a * d - b * c);
+}
+
+function isProductState(s) {
+  return concurrence(...s) < 0.01;
+}
+
+function blochVectors(a, b, c, d) {
+  const rAx = 2 * (a * c + b * d);
+  const rAz = a * a + b * b - c * c - d * d;
+  const rBx = 2 * (a * b + c * d);
+  const rBz = a * a + c * c - b * b - d * d;
+  return {
+    A: { x: rAx, y: 0, z: rAz, len: Math.sqrt(rAx * rAx + rAz * rAz) },
+    B: { x: rBx, y: 0, z: rBz, len: Math.sqrt(rBx * rBx + rBz * rBz) }
+  };
+}
+
+function randomState() {
+  let x1, x2, x3, x4, s1, s2;
+  do { x1 = 2*Math.random()-1; x2 = 2*Math.random()-1; s1 = x1*x1+x2*x2; } while (s1 >= 1);
+  do { x3 = 2*Math.random()-1; x4 = 2*Math.random()-1; s2 = x3*x3+x4*x4; } while (s2 >= 1);
+  const f = Math.sqrt((1 - s1) / s2);
+  return [x1, x2, x3 * f, x4 * f];
+}
+
+function randomProductState() {
+  const t1 = Math.random() * Math.PI - Math.PI/2;
+  const t2 = Math.random() * Math.PI - Math.PI/2;
+  return productStateFromAngles(t1, t2);
+}
+
+function productStateFromAngles(t1, t2) {
+  return [
+    Math.cos(t1) * Math.cos(t2),
+    Math.cos(t1) * Math.sin(t2),
+    Math.sin(t1) * Math.cos(t2),
+    Math.sin(t1) * Math.sin(t2)
+  ];
+}
+
+// ── S³ Geodesic (SLERP) ──
+function slerp(u, v, t) {
+  let d = dot4(u, v);
+  let vv = v.slice();
+  if (d < 0) { d = -d; vv = vv.map(x => -x); }
+  if (d > 0.9999) {
+    return normalize4([
+      u[0] + t * (vv[0] - u[0]),
+      u[1] + t * (vv[1] - u[1]),
+      u[2] + t * (vv[2] - u[2]),
+      u[3] + t * (vv[3] - u[3])
+    ]);
+  }
+  const omega = Math.acos(Math.min(d, 1));
+  const sinO = Math.sin(omega);
+  const a = Math.sin((1 - t) * omega) / sinO;
+  const b = Math.sin(t * omega) / sinO;
+  return [a*u[0]+b*vv[0], a*u[1]+b*vv[1], a*u[2]+b*vv[2], a*u[3]+b*vv[3]];
+}
+
+function geodesicDist(u, v) {
+  let d = Math.abs(dot4(u, v));
+  return Math.acos(Math.min(d, 1));
+}
+
+// ── Separable Geodesic ──
+function toTorusAngles(s) {
+  const [a, b, c, d] = s;
+  if (Math.abs(a) > 0.01 || Math.abs(b) > 0.01) {
+    const t2 = Math.atan2(b, a);
+    const cosT2 = Math.cos(t2);
+    const sinT2 = Math.sin(t2);
+    const cosT1Part = a * cosT2 + b * sinT2;
+    const sinT1Part = c * cosT2 + d * sinT2;
+    const t1 = Math.atan2(sinT1Part, cosT1Part);
+    return [t1, t2];
+  }
+  const t1 = Math.atan2(Math.sqrt(c*c + d*d), 0);
+  const t2 = Math.atan2(d, c);
+  return [t1, t2];
+}
+
+function shortAngleDiff(a, b) {
+  let d = b - a;
+  while (d > Math.PI) d -= 2 * Math.PI;
+  while (d < -Math.PI) d += 2 * Math.PI;
+  return d;
+}
+
+function separableGeodesicPath(t) {
+  if (!bothProductStates) return startState;
+  const [t1a, t2a] = toTorusAngles(startState);
+  const [t1b, t2b] = toTorusAngles(endState);
+  const dt1 = shortAngleDiff(t1a, t1b);
+  const dt2 = shortAngleDiff(t2a, t2b);
+  const t1 = t1a + t * dt1;
+  const t2 = t2a + t * dt2;
+  return productStateFromAngles(t1, t2);
+}
+
+function separableGeodesicDist() {
+  if (!bothProductStates) return Infinity;
+  const [t1a, t2a] = toTorusAngles(startState);
+  const [t1b, t2b] = toTorusAngles(endState);
+  const dt1 = shortAngleDiff(t1a, t1b);
+  const dt2 = shortAngleDiff(t2a, t2b);
+  return Math.sqrt(dt1 * dt1 + dt2 * dt2);
+}
+
+// ── Current Path ──
+function getCurrentState(t) {
+  if (pathMode === 'separable' && bothProductStates) return separableGeodesicPath(t);
+  return slerp(startState, endState, t);
+}
+
+function getCurrentPathLength() {
+  if (pathMode === 'separable' && bothProductStates) return sepGeodesicLength;
+  return geodesicLength;
+}
+
+function stateToHTML(s) {
+  const [a, b, c, d] = s;
+  const kets = ['|00⟩', '|01⟩', '|10⟩', '|11⟩'];
+  let parts = [];
+  [a, b, c, d].forEach((v, i) => {
+    if (Math.abs(v) > 0.01) parts.push({ coeff: v, ket: kets[i] });
+  });
+  let html = '|ψ⟩ = ';
+  parts.forEach((p, i) => {
+    const sign = p.coeff < 0 ? '−' : (i > 0 ? '+ ' : '');
+    html += `${sign}${Math.abs(p.coeff).toFixed(2)}<span class="ket">${p.ket}</span> `;
+  });
+  return html;
+}
+
+function stateToShortLabel(s) {
+  const [a, b, c, d] = s;
+  const kets = ['|00⟩', '|01⟩', '|10⟩', '|11⟩'];
+  let parts = [];
+  [a, b, c, d].forEach((v, i) => {
+    if (Math.abs(v) > 0.01) parts.push(`${v.toFixed(2)}${kets[i]}`);
+  });
+  return parts.join('+').replace(/\+-/g, '-');
+}
+
+// ── Three.js Setup ──
+const canvas = document.getElementById('canvas3d');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setClearColor(0x0d1117);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.01, 100);
+camera.position.set(1.8, 1.4, 2.2);
+
+const orbitControls = new OrbitControls(camera, canvas);
+orbitControls.enableDamping = true;
+orbitControls.dampingFactor = 0.08;
+orbitControls.target.set(0.3, 0.3, 0.3);
+orbitControls.update();
+
+scene.add(new THREE.AmbientLight(0x404060, 1.5));
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+dirLight.position.set(3, 5, 4);
+scene.add(dirLight);
+const dirLight2 = new THREE.DirectionalLight(0x6495ed, 0.4);
+dirLight2.position.set(-2, -1, 3);
+scene.add(dirLight2);
+
+// ── Axes ──
+function addAxis(dir, color) {
+  const geo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(dir[0] * 1.5, dir[1] * 1.5, dir[2] * 1.5)
+  ]);
+  scene.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.25 })));
+}
+addAxis([1,0,0], 0x666666); addAxis([0,1,0], 0x666666); addAxis([0,0,1], 0x666666);
+
+// ── Labels ──
+function makeSprite(text, color = '#ffffff', scale = 0.35) {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 64;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = color;
+  ctx.font = 'bold 32px SF Mono, Fira Code, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 128, 32);
+  const tex = new THREE.CanvasTexture(c);
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(scale, scale * 0.26, 1);
+  return sprite;
+}
+
+const basisPositions = {
+  '|00⟩': stereo(1, 0, 0, 0),
+  '|01⟩': stereo(0, 1, 0, 0),
+  '|10⟩': stereo(0, 0, 1, 0),
+  '|11⟩': stereo(0, 0, 0, 1)
+};
+for (const [label, pos] of Object.entries(basisPositions)) {
+  const s = makeSprite(label, '#58a6ff');
+  s.position.copy(pos).add(new THREE.Vector3(0, 0.08, 0));
+  scene.add(s);
+  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.02, 12, 12), new THREE.MeshBasicMaterial({ color: 0x58a6ff }));
+  dot.position.copy(pos);
+  scene.add(dot);
+}
+
+// ── Start / End Markers ──
+const startMarker = new THREE.Mesh(
+  new THREE.SphereGeometry(0.035, 16, 16),
+  new THREE.MeshBasicMaterial({ color: 0x00ff88 })
+);
+const endMarker = new THREE.Mesh(
+  new THREE.SphereGeometry(0.035, 16, 16),
+  new THREE.MeshBasicMaterial({ color: 0xff6688 })
+);
+const startLabel = makeSprite('START', '#00ff88', 0.28);
+const endLabel = makeSprite('END', '#ff6688', 0.28);
+scene.add(startMarker); scene.add(endMarker);
+scene.add(startLabel); scene.add(endLabel);
+
+function updateEndpointMarkers() {
+  const sp = stereo(...startState);
+  const ep = stereo(...endState);
+  if (sp) { startMarker.position.copy(sp); startLabel.position.copy(sp).add(new THREE.Vector3(0, -0.07, 0)); }
+  if (ep) { endMarker.position.copy(ep); endLabel.position.copy(ep).add(new THREE.Vector3(0, -0.07, 0)); }
+}
+
+// ── Product State Surface (Segre Variety) ──
+function buildSegreeSurface() {
+  const N = 100;
+  const vertices = [], indices = [], grid = [];
+  for (let i = 0; i <= N; i++) {
+    const row = [];
+    for (let j = 0; j <= N; j++) {
+      const t1 = -Math.PI/2 + Math.PI * i / N;
+      const t2 = -Math.PI/2 + Math.PI * j / N;
+      const s = productStateFromAngles(t1, t2);
+      const p = stereo(...s);
+      if (p && p.length() < 5) {
+        vertices.push(p.x, p.y, p.z);
+        row.push(vertices.length / 3 - 1);
+      } else { row.push(-1); }
+    }
+    grid.push(row);
+  }
+  for (let i = 0; i < N; i++) {
+    for (let j = 0; j < N; j++) {
+      const a = grid[i][j], b = grid[i][j+1], c = grid[i+1][j], d = grid[i+1][j+1];
+      if (a >= 0 && b >= 0 && c >= 0 && d >= 0) { indices.push(a,b,c); indices.push(b,d,c); }
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+const segreGeo = buildSegreeSurface();
+scene.add(new THREE.Mesh(segreGeo, new THREE.MeshPhongMaterial({
+  color: 0x6495ed, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false, shininess: 30
+})));
+scene.add(new THREE.LineSegments(
+  new THREE.WireframeGeometry(segreGeo),
+  new THREE.LineBasicMaterial({ color: 0x6495ed, transparent: true, opacity: 0.08 })
+));
+
+const torusVertices = [];
+{ const pos = segreGeo.getAttribute('position');
+  for (let i = 0; i < pos.count; i++) torusVertices.push(new THREE.Vector3(pos.getX(i), pos.getY(i), pos.getZ(i)));
+}
+function nearestProductPoint(pt) {
+  let best = null, bestDist = Infinity;
+  for (const v of torusVertices) { const d = pt.distanceTo(v); if (d < bestDist) { bestDist = d; best = v; } }
+  return best;
+}
+
+// ── Path Tubes (dynamic) ──
+let geodesicTube = null, sepTube = null;
+
+function clearTube(tube) {
+  if (tube) { scene.remove(tube); tube.geometry.dispose(); tube.material.dispose(); }
+}
+
+function buildTube(pathFn, color, emissive, nSamples = 300) {
+  const points = [];
+  for (let i = 0; i <= nSamples; i++) {
+    const t = i / nSamples;
+    const s = pathFn(t);
+    const p = stereo(...s);
+    if (p) points.push(p);
+  }
+  if (points.length < 4) return null;
+  const curve = new THREE.CatmullRomCurve3(points, false, 'centripetal');
+  const geo = new THREE.TubeGeometry(curve, nSamples, 0.012, 8, false);
+  const mat = new THREE.MeshPhongMaterial({ color, emissive, transparent: true, opacity: 0.9 });
+  const mesh = new THREE.Mesh(geo, mat);
+  scene.add(mesh);
+  return mesh;
+}
+
+function rebuildPaths() {
+  clearTube(geodesicTube);
+  clearTube(sepTube);
+
+  // Ensure endpoints are in the same hemisphere of S³ so the slerp,
+  // markers, and stereo projection all agree on the shorter arc.
+  if (dot4(startState, endState) < 0) {
+    endState = endState.map(x => -x);
+  }
+
+  geodesicLength = geodesicDist(startState, endState);
+  bothProductStates = isProductState(startState) && isProductState(endState);
+  sepGeodesicLength = bothProductStates ? separableGeodesicDist() : Infinity;
+
+  geodesicTube = buildTube(t => slerp(startState, endState, t), 0xff4466, 0x441122);
+  if (bothProductStates) {
+    sepTube = buildTube(separableGeodesicPath, 0xffaa00, 0x443300);
+  }
+
+  updateEndpointMarkers();
+  updatePathVisibility();
+  updateDistancePanel();
+  resetAnim();
+}
+
+function updateDistancePanel() {
+  document.getElementById('dist-geodesic').textContent = geodesicLength.toFixed(3);
+
+  const sepRow = document.getElementById('sep-dist-row');
+  const shortcutNote = document.getElementById('shortcut-note');
+  const noSepMsg = document.getElementById('no-sep-msg');
+
+  if (bothProductStates && sepGeodesicLength < Infinity) {
+    sepRow.style.display = 'flex';
+    document.getElementById('dist-separable').textContent = sepGeodesicLength.toFixed(3);
+    shortcutNote.style.display = 'block';
+    noSepMsg.style.display = 'none';
+    if (sepGeodesicLength > 0.001) {
+      const pct = ((1 - geodesicLength / sepGeodesicLength) * 100).toFixed(0);
+      document.getElementById('shortcut-pct').textContent = `${pct}%`;
+    } else {
+      document.getElementById('shortcut-pct').textContent = '—';
+    }
+  } else {
+    sepRow.style.display = 'none';
+    shortcutNote.style.display = 'none';
+    noSepMsg.style.display = 'block';
+  }
+}
+
+// ── State Point ──
+const statePoint = new THREE.Mesh(
+  new THREE.SphereGeometry(0.04, 24, 24), new THREE.MeshBasicMaterial({ color: 0xffffff })
+);
+scene.add(statePoint);
+const glowPoint = new THREE.Mesh(
+  new THREE.SphereGeometry(0.07, 16, 16), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.2 })
+);
+scene.add(glowPoint);
+
+// Distance line
+const distLineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+const distLine = new THREE.Line(distLineGeo, new THREE.LineDashedMaterial({
+  color: 0xffffff, transparent: true, opacity: 0.4, dashSize: 0.03, gapSize: 0.02
+}));
+distLine.computeLineDistances();
+scene.add(distLine);
+const nearestDot = new THREE.Mesh(
+  new THREE.SphereGeometry(0.02, 12, 12), new THREE.MeshBasicMaterial({ color: 0x6495ed, transparent: true, opacity: 0.6 })
+);
+scene.add(nearestDot);
+
+// Trail
+const trailMax = 150;
+const trailPositions = new Float32Array(trailMax * 3);
+const trailGeo = new THREE.BufferGeometry();
+trailGeo.setAttribute('position', new THREE.Float32BufferAttribute(trailPositions, 3));
+const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 }));
+scene.add(trail);
+let trailIdx = 0, trailCount = 0;
+
+// ── Bloch Sphere Drawing ──
+function drawBloch(canvasId, vec) {
+  const c = document.getElementById(canvasId);
+  const ctx = c.getContext('2d');
+  const w = c.width, h = c.height, cx = w/2, cy = h/2, r = w * 0.36;
+  ctx.clearRect(0, 0, w, h);
+  ctx.strokeStyle = 'rgba(100,149,237,0.3)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(cx, cy, r, r*0.3, 0, 0, Math.PI*2); ctx.stroke();
+  ctx.strokeStyle = 'rgba(100,149,237,0.2)';
+  ctx.beginPath(); ctx.moveTo(cx, cy-r); ctx.lineTo(cx, cy+r); ctx.stroke();
+  ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+  ctx.fillText('|0⟩', cx+2, cy-r-5); ctx.fillText('|1⟩', cx+2, cy+r+12);
+  const px = cx + vec.x * r, py = cy - vec.z * r;
+  const len = vec.len;
+  const hue = len > 0.99 ? '88,166,255' : len < 0.3 ? '255,68,102' : '255,170,0';
+  ctx.strokeStyle = `rgba(${hue},${0.5+0.5*len})`; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(px, py); ctx.stroke();
+  if (len > 0.05) {
+    const angle = Math.atan2(-(py-cy), px-cx); const aLen = 8;
+    ctx.fillStyle = `rgba(${hue},${0.5+0.5*len})`;
+    ctx.beginPath(); ctx.moveTo(px, py);
+    ctx.lineTo(px - aLen*Math.cos(angle-0.4), py + aLen*Math.sin(angle-0.4));
+    ctx.lineTo(px - aLen*Math.cos(angle+0.4), py + aLen*Math.sin(angle+0.4));
+    ctx.fill();
+  }
+  ctx.fillStyle = '#8b949e'; ctx.font = '9px monospace'; ctx.textAlign = 'right';
+  ctx.fillText(`|r|=${len.toFixed(2)}`, w-4, h-4);
+}
+
+// ── Concurrence Graph ──
+function drawGraph() {
+  const c = document.getElementById('graphCanvas');
+  const ctx = c.getContext('2d');
+  const w = c.width, h = c.height;
+  const pad = { l: 28, r: 8, t: 8, b: 18 };
+  const gw = w - pad.l - pad.r, gh = h - pad.t - pad.b;
+  ctx.clearRect(0, 0, w, h);
+  ctx.strokeStyle = 'rgba(100,149,237,0.3)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t+gh);
+  ctx.lineTo(pad.l+gw, pad.t+gh); ctx.stroke();
+  ctx.fillStyle = '#8b949e'; ctx.font = '8px monospace';
+  ctx.textAlign = 'right'; ctx.fillText('1', pad.l-3, pad.t+4); ctx.fillText('0', pad.l-3, pad.t+gh+3);
+  ctx.textAlign = 'center'; ctx.fillText('Start', pad.l, pad.t+gh+12); ctx.fillText('End', pad.l+gw, pad.t+gh+12);
+
+  // Reference: precompute concurrence along geodesic (dashed)
+  ctx.strokeStyle = 'rgba(255,68,102,0.2)'; ctx.setLineDash([3,3]); ctx.beginPath();
+  for (let i = 0; i <= 100; i++) {
+    const t = i/100; const s = slerp(startState, endState, t);
+    const cv = concurrence(...s);
+    const x = pad.l + t*gw, y = pad.t + gh - cv*gh;
+    i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  }
+  ctx.stroke(); ctx.setLineDash([]);
+
+  // Active trace
+  if (concurrenceHistory.length > 1) {
+    const colors = { geodesic: '#ff4466', separable: '#ffaa00', both: '#ff4466' };
+    ctx.strokeStyle = colors[pathMode] || '#ff4466'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < concurrenceHistory.length; i++) {
+      const { t, c: cv } = concurrenceHistory[i];
+      const x = pad.l + t*gw, y = pad.t + gh - cv*gh;
+      i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  }
+  if (concurrenceHistory.length > 0) {
+    const last = concurrenceHistory[concurrenceHistory.length-1];
+    ctx.fillStyle = '#ffffff'; ctx.beginPath();
+    ctx.arc(pad.l + last.t*gw, pad.t + gh - last.c*gh, 4, 0, Math.PI*2); ctx.fill();
+  }
+}
+
+// ── Update ──
+function updateVis(t) {
+  const state = getCurrentState(t);
+  const [a, b, c, d] = state;
+  const p = stereo(a, b, c, d);
+  if (!p) return;
+
+  statePoint.position.copy(p);
+  glowPoint.position.copy(p);
+  const C = concurrence(a, b, c, d);
+  const color = new THREE.Color().setHSL(0.6 - C * 0.6, 0.9, 0.5 + C * 0.2);
+  statePoint.material.color.copy(color);
+  glowPoint.material.color.copy(color);
+
+  const nearest = nearestProductPoint(p);
+  if (nearest && C > 0.02) {
+    const positions = distLine.geometry.attributes.position;
+    positions.setXYZ(0, p.x, p.y, p.z); positions.setXYZ(1, nearest.x, nearest.y, nearest.z);
+    positions.needsUpdate = true; distLine.computeLineDistances();
+    distLine.visible = true; nearestDot.position.copy(nearest); nearestDot.visible = true;
+  } else { distLine.visible = false; nearestDot.visible = false; }
+
+  trailPositions[trailIdx*3] = p.x; trailPositions[trailIdx*3+1] = p.y; trailPositions[trailIdx*3+2] = p.z;
+  trailIdx = (trailIdx + 1) % trailMax;
+  trailCount = Math.min(trailCount + 1, trailMax);
+  trail.geometry.attributes.position.needsUpdate = true;
+  trail.geometry.setDrawRange(0, trailCount);
+
+  // UI
+  const cVal = document.getElementById('concurrence-val');
+  cVal.textContent = C.toFixed(3);
+  const hsl = `hsl(${210 - C*210}, 90%, ${55 + C*15}%)`;
+  cVal.style.color = hsl;
+  document.getElementById('c-bar').style.width = `${C*100}%`;
+  document.getElementById('c-bar').style.background = hsl;
+  document.getElementById('state-vec-display').innerHTML = stateToHTML(state);
+  document.getElementById('dist-traveled').textContent = (t * getCurrentPathLength()).toFixed(3);
+
+  concurrenceHistory.push({ t, c: C });
+  if (concurrenceHistory.length > MAX_HIST + 50) concurrenceHistory = concurrenceHistory.slice(-MAX_HIST);
+
+  const bloch = blochVectors(a, b, c, d);
+  drawBloch('blochA', bloch.A);
+  drawBloch('blochB', bloch.B);
+  drawGraph();
+}
+
+// ── Path Visibility ──
+function updatePathVisibility() {
+  if (geodesicTube) geodesicTube.visible = (pathMode === 'geodesic' || pathMode === 'both');
+  if (sepTube) sepTube.visible = (pathMode === 'separable' || pathMode === 'both');
+}
+
+// ── Controls ──
+function resolveState(selectId) {
+  const val = document.getElementById(selectId).value;
+  if (val === 'random') return randomState();
+  return PRESETS[val] ? PRESETS[val].slice() : [1, 0, 0, 0];
+}
+
+function onEndpointChange() {
+  startState = resolveState('startSelect');
+  endState = resolveState('endSelect');
+  document.getElementById('start-label').textContent = stateToShortLabel(startState);
+  document.getElementById('end-label').textContent = stateToShortLabel(endState);
+  rebuildPaths();
+}
+
+document.getElementById('startSelect').addEventListener('change', onEndpointChange);
+document.getElementById('endSelect').addEventListener('change', onEndpointChange);
+document.getElementById('randomBtn').addEventListener('click', () => {
+  document.getElementById('startSelect').value = 'random';
+  document.getElementById('endSelect').value = 'random';
+  startState = randomState();
+  endState = randomState();
+  document.getElementById('start-label').textContent = stateToShortLabel(startState);
+  document.getElementById('end-label').textContent = stateToShortLabel(endState);
+  rebuildPaths();
+});
+
+document.getElementById('pathSelect').addEventListener('change', (e) => {
+  pathMode = e.target.value;
+  updatePathVisibility();
+  resetAnim();
+});
+document.getElementById('playBtn').addEventListener('click', () => {
+  playing = !playing;
+  document.getElementById('playBtn').textContent = playing ? '⏸ Pause' : '▶ Play';
+});
+document.getElementById('resetBtn').addEventListener('click', resetAnim);
+document.getElementById('speedSlider').addEventListener('input', (e) => { speed = parseFloat(e.target.value); });
+
+function resetAnim() {
+  animT = 0; concurrenceHistory = []; trailIdx = 0; trailCount = 0;
+  updateVis(0);
+}
+
+// ── Animation Loop ──
+let lastTime = 0;
+function animate(time) {
+  requestAnimationFrame(animate);
+  const dt = Math.min((time - lastTime) / 1000, 0.05);
+  lastTime = time;
+  if (playing) {
+    animT += dt * speed * 0.5;
+    if (animT > 1) { animT = 1; playing = false; document.getElementById('playBtn').textContent = '▶ Play'; }
+    updateVis(animT);
+  }
+  orbitControls.update();
+  renderer.render(scene, camera);
+}
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ── Init ──
+rebuildPaths();
+requestAnimationFrame(animate);
+
+</script>
+</body>
+</html>
