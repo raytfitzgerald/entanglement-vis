@@ -102,6 +102,71 @@ For those interested in the details:
 - **Separable geodesic**: The product state surface is a flat torus (metric ds² = dθ₁² + dθ₂²), so geodesics are straight lines in the (θ₁, θ₂) parameter space.
 - **Bloch vectors**: Computed from the reduced density matrix of each qubit. Length = 1 for pure (product) states, < 1 for mixed (entangled) states.
 
+## Tab 2: Kernel Space
+
+The second tab visualizes how quantum kernel states cluster during training. It shows a 2D scatter plot of UMAP-embedded kernel matrix entries, animated across training epochs.
+
+### Two-Step Workflow
+
+**Step 1: Export your data (Python)**
+
+```bash
+pip install numpy scikit-learn umap-learn  # umap-learn is optional, falls back to MDS
+python scripts/export_kernel_umap.py --results-dir path/to/results/folder
+```
+
+This reads quantum kernel matrices from checkpoint directories and exports a `kernel_umap.json` file. To process all result folders under a parent directory at once:
+
+```bash
+python scripts/export_kernel_umap.py --batch path/to/parent/folder
+```
+
+**Step 2: Load in the browser**
+
+Open the site, click the **Kernel Space** tab, and either drag-and-drop your `kernel_umap.json` onto the drop zone or click to browse.
+
+### Kernel Space Controls
+
+| Control | Description |
+|---------|-------------|
+| **Load data** | Drag-and-drop or file picker for `kernel_umap.json` |
+| **Study selector** | Switch between multiple loaded studies |
+| **Epoch slider** | Scrub through training epochs with step/cost/accuracy readouts |
+| **Play / Pause** | Auto-advance through epochs (configurable 1–10 fps) |
+| **Color mode** | Color points by label (BAS=orange, non-BAS=blue) or by h_score (viridis colormap) |
+| **H-score threshold** | Show a threshold indicator on the scatter plot |
+| **Overlay mode** | Plot two studies in the same scatter space (Procrustes alignment) |
+
+### Metrics
+
+- **Cluster distance**: Euclidean distance between BAS and non-BAS centroids in UMAP space
+- **Silhouette score**: Cluster quality measure (−1 to 1), shown as a colored badge
+- **Epoch strip**: Bottom line chart showing accuracy and cost vs epoch; click to jump
+
+### Expected JSON Format
+
+```json
+{
+  "metadata": {
+    "num_samples": 200,
+    "num_layers": 5,
+    "image_size": "10x10"
+  },
+  "epochs": [
+    {
+      "epoch": 0,
+      "step": 0,
+      "cost": 0.693,
+      "accuracy": 0.51,
+      "points": [
+        {"id": 0, "x": 1.23, "y": -0.45, "label": 1, "h_score": 0.0},
+        ...
+      ]
+    }
+  ]
+}
+```
+
 ## License
 
 MIT

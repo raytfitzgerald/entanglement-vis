@@ -10,6 +10,30 @@
     background: #0d1117; color: #e6edf3; font-family: 'SF Mono', 'Fira Code', monospace;
     overflow: hidden; height: 100vh; width: 100vw;
   }
+
+  /* ── Tab Navigation ── */
+  #tab-nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+    display: flex; align-items: center; gap: 0;
+    background: rgba(13,17,23,0.95); border-bottom: 1px solid rgba(88,166,255,0.2);
+    backdrop-filter: blur(12px); padding: 0 16px; height: 38px;
+  }
+  .tab-btn {
+    background: none; border: none; color: #8b949e; font-family: inherit;
+    font-size: 12px; padding: 8px 18px; cursor: pointer; position: relative;
+    transition: color 0.2s;
+  }
+  .tab-btn:hover { color: #e6edf3; }
+  .tab-btn.active { color: #58a6ff; }
+  .tab-btn.active::after {
+    content: ''; position: absolute; bottom: 0; left: 8px; right: 8px;
+    height: 2px; background: #58a6ff; border-radius: 1px;
+  }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* ── Entanglement Geometry Tab ── */
+  #tab-entanglement { position: relative; width: 100vw; height: 100vh; }
   #canvas3d { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
 
   .panel {
@@ -18,17 +42,17 @@
     box-shadow: 0 4px 20px rgba(0,0,0,0.4);
   }
 
-  #info-panel { top: 14px; left: 14px; max-width: 320px; }
+  #info-panel { top: 52px; left: 14px; max-width: 320px; }
   #info-panel h1 { font-size: 15px; color: #58a6ff; margin-bottom: 6px; font-weight: 600; }
   #info-panel p { font-size: 11px; line-height: 1.5; color: #8b949e; margin-bottom: 6px; }
   #info-panel .highlight { color: #e6edf3; }
 
-  #legend { top: 14px; right: 14px; font-size: 11px; }
+  #legend { top: 52px; right: 14px; font-size: 11px; }
   #legend .row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
   #legend .swatch { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
 
   #state-display {
-    top: 14px; left: 50%; transform: translateX(-50%);
+    top: 52px; left: 50%; transform: translateX(-50%);
     text-align: center; min-width: 280px;
   }
   #state-display .state-vec {
@@ -95,9 +119,110 @@
   .ctrl-bar .sep { width: 1px; height: 20px; background: rgba(88,166,255,0.15); }
   .endpoint-label { font-size: 10px; color: #6e7681; max-width: 120px; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ── Kernel Space Tab ── */
+  #tab-kernel {
+    position: relative; width: 100vw; height: 100vh; padding-top: 38px;
+    display: flex; flex-direction: column;
+  }
+  #ks-main {
+    flex: 1; display: flex; overflow: hidden;
+  }
+
+  #ks-sidebar {
+    width: 280px; min-width: 280px;
+    background: rgba(13,17,23,0.92); border-right: 1px solid rgba(88,166,255,0.15);
+    padding: 16px; overflow-y: auto;
+  }
+  #ks-sidebar h2 { font-size: 13px; color: #58a6ff; margin-bottom: 12px; font-weight: 600; }
+  .ks-group { margin-bottom: 16px; }
+  .ks-group label { display: block; font-size: 11px; color: #8b949e; margin-bottom: 4px; }
+  .ks-group select, .ks-group input[type=number] {
+    width: 100%; background: rgba(88,166,255,0.08); color: #e6edf3;
+    border: 1px solid rgba(88,166,255,0.2); border-radius: 5px; padding: 5px 8px;
+    font-family: inherit; font-size: 11px;
+  }
+  .ks-group input[type=range] { width: 100%; accent-color: #58a6ff; }
+  .ks-group .ks-readout { font-size: 11px; color: #8b949e; margin-top: 2px; }
+  .ks-btn {
+    background: rgba(88,166,255,0.15); color: #e6edf3; border: 1px solid rgba(88,166,255,0.3);
+    border-radius: 5px; padding: 7px 14px; font-family: inherit; font-size: 11px;
+    cursor: pointer; width: 100%; margin-bottom: 4px;
+  }
+  .ks-btn:hover { background: rgba(88,166,255,0.3); }
+  .ks-checkbox { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #8b949e; cursor: pointer; }
+  .ks-checkbox input { accent-color: #58a6ff; }
+
+  #ks-drop-zone {
+    border: 2px dashed rgba(88,166,255,0.3); border-radius: 8px; padding: 20px;
+    text-align: center; color: #6e7681; font-size: 11px; margin-bottom: 12px;
+    transition: border-color 0.2s, background 0.2s; cursor: pointer;
+  }
+  #ks-drop-zone.dragover {
+    border-color: #58a6ff; background: rgba(88,166,255,0.08);
+  }
+  #ks-drop-zone.has-data { border-color: rgba(0,255,136,0.3); color: #8b949e; }
+  #ks-file-input { display: none; }
+  #ks-loading { display: none; margin-top: 8px; }
+  #ks-loading .ks-progress-bar {
+    width: 100%; height: 4px; background: rgba(88,166,255,0.15); border-radius: 2px; overflow: hidden;
+  }
+  #ks-loading .ks-progress-fill {
+    height: 100%; background: #58a6ff; border-radius: 2px; transition: width 0.3s; width: 0%;
+  }
+
+  #ks-scatter-wrap {
+    flex: 1; display: flex; flex-direction: column; position: relative;
+  }
+  #ks-scatter-area {
+    flex: 1; position: relative; background: #0d1117;
+  }
+  #ks-scatter-canvas {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  }
+  #ks-tooltip {
+    display: none; position: absolute; pointer-events: none; z-index: 100;
+    background: rgba(13,17,23,0.95); border: 1px solid rgba(88,166,255,0.3);
+    border-radius: 6px; padding: 8px 10px; font-size: 10px; color: #e6edf3;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5); max-width: 200px;
+  }
+  #ks-metrics {
+    position: absolute; top: 12px; right: 12px; z-index: 50;
+    background: rgba(13,17,23,0.88); border: 1px solid rgba(88,166,255,0.2);
+    border-radius: 8px; padding: 10px 14px; font-size: 11px;
+    backdrop-filter: blur(12px);
+  }
+  #ks-metrics .metric-row { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 4px; }
+  #ks-metrics .metric-label { color: #8b949e; }
+  #ks-metrics .metric-val { font-weight: 600; }
+  .sil-badge {
+    display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600;
+  }
+
+  #ks-empty {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    color: #6e7681; font-size: 13px; flex-direction: column; gap: 8px;
+  }
+  #ks-empty .hint { font-size: 11px; color: #484f58; }
+
+  /* ── Epoch Metrics Strip ── */
+  #ks-epoch-strip {
+    height: 80px; background: rgba(13,17,23,0.92);
+    border-top: 1px solid rgba(88,166,255,0.15); position: relative; cursor: pointer;
+  }
+  #ks-epoch-canvas { width: 100%; height: 100%; }
 </style>
 </head>
 <body>
+
+<!-- Tab Navigation -->
+<nav id="tab-nav">
+  <button class="tab-btn active" data-tab="tab-entanglement">Entanglement Geometry</button>
+  <button class="tab-btn" data-tab="tab-kernel">Kernel Space</button>
+</nav>
+
+<!-- ═══ Tab 1: Entanglement Geometry ═══ -->
+<div class="tab-content active" id="tab-entanglement">
 
 <canvas id="canvas3d"></canvas>
 
@@ -212,6 +337,121 @@
   <input type="range" id="speedSlider" min="0.05" max="1" step="0.05" value="0.3">
 </div>
 
+</div><!-- /tab-entanglement -->
+
+<!-- ═══ Tab 2: Kernel Space ═══ -->
+<div class="tab-content" id="tab-kernel">
+  <div id="ks-main">
+    <!-- Sidebar controls -->
+    <div id="ks-sidebar">
+      <h2>Kernel Space</h2>
+
+      <div class="ks-group">
+        <div id="ks-drop-zone">
+          Drop kernel_umap.json here<br>or click to browse
+        </div>
+        <input type="file" id="ks-file-input" accept=".json" multiple>
+        <div id="ks-loading">
+          <div class="ks-progress-bar"><div class="ks-progress-fill" id="ks-progress-fill"></div></div>
+        </div>
+      </div>
+
+      <div class="ks-group">
+        <label>Study</label>
+        <select id="ks-study-select" disabled><option>No data loaded</option></select>
+      </div>
+
+      <div class="ks-group">
+        <label>Epoch <span id="ks-epoch-label">—</span></label>
+        <input type="range" id="ks-epoch-slider" min="0" max="0" value="0" disabled>
+        <div class="ks-readout">
+          Step <span id="ks-step-val">—</span> &nbsp;|&nbsp;
+          Cost <span id="ks-cost-val">—</span> &nbsp;|&nbsp;
+          Acc <span id="ks-acc-val">—</span>
+        </div>
+        <div style="display:flex; gap:6px; margin-top:6px;">
+          <button class="ks-btn" id="ks-play-btn" disabled style="flex:1">▶ Play</button>
+          <select id="ks-fps-select" style="width:70px; background:rgba(88,166,255,0.08); color:#e6edf3; border:1px solid rgba(88,166,255,0.2); border-radius:5px; font-family:inherit; font-size:11px; padding:4px;">
+            <option value="1">1 fps</option>
+            <option value="3" selected>3 fps</option>
+            <option value="5">5 fps</option>
+            <option value="10">10 fps</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="ks-group">
+        <label>Color Mode</label>
+        <select id="ks-color-mode">
+          <option value="label">By label (BAS / non-BAS)</option>
+          <option value="h_score">By h_score (viridis)</option>
+        </select>
+      </div>
+
+      <div class="ks-group">
+        <label class="ks-checkbox">
+          <input type="checkbox" id="ks-show-threshold">
+          Show h_score threshold
+        </label>
+        <div style="margin-top:4px;">
+          <label style="font-size:10px; color:#6e7681;">Threshold</label>
+          <input type="number" id="ks-threshold-val" value="0.15" min="0" max="1" step="0.01" style="width:70px">
+        </div>
+      </div>
+
+      <div class="ks-group">
+        <label class="ks-checkbox">
+          <input type="checkbox" id="ks-overlay-mode">
+          Overlay mode (Procrustes)
+        </label>
+      </div>
+    </div>
+
+    <!-- Scatter plot area -->
+    <div id="ks-scatter-wrap">
+      <div id="ks-empty">
+        <div>Load a kernel_umap.json to begin</div>
+        <div class="hint">Generate with: python scripts/export_kernel_umap.py --results-dir path/to/results</div>
+      </div>
+      <div id="ks-scatter-area" style="display:none">
+        <canvas id="ks-scatter-canvas"></canvas>
+        <div id="ks-tooltip"></div>
+        <div id="ks-metrics" style="display:none">
+          <div class="metric-row">
+            <span class="metric-label">Cluster dist</span>
+            <span class="metric-val" id="ks-cluster-dist">—</span>
+          </div>
+          <div class="metric-row">
+            <span class="metric-label">Silhouette</span>
+            <span id="ks-silhouette">—</span>
+          </div>
+        </div>
+      </div>
+      <div id="ks-epoch-strip" style="display:none">
+        <canvas id="ks-epoch-canvas"></canvas>
+      </div>
+    </div>
+  </div>
+</div><!-- /tab-kernel -->
+
+
+<!-- ═══ Tab Navigation Script ═══ -->
+<script>
+(function() {
+  const btns = document.querySelectorAll('.tab-btn');
+  btns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      btns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+      document.getElementById(btn.dataset.tab).classList.add('active');
+      if (btn.dataset.tab === 'tab-kernel') window.dispatchEvent(new Event('ks-activated'));
+    });
+  });
+})();
+</script>
+
+<!-- ═══ Entanglement Geometry (Three.js) ═══ -->
 <script type="importmap">
 {
   "imports": {
@@ -224,7 +464,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-// ── Constants ──
 const S2 = Math.SQRT2, S2I = 1 / S2;
 
 const PRESETS = {
@@ -238,7 +477,6 @@ const PRESETS = {
   'Bell':  [S2I, 0, 0, S2I],
 };
 
-// ── State ──
 let startState = [1, 0, 0, 0];
 let endState = [0, 0, 0, 1];
 let animT = 0, playing = false, speed = 0.3;
@@ -250,7 +488,6 @@ let geodesicLength = 0;
 let sepGeodesicLength = 0;
 let bothProductStates = true;
 
-// ── Math ──
 function stereo(a, b, c, d) {
   const denom = 1 + a;
   if (denom < 0.05) return null;
@@ -306,7 +543,6 @@ function productStateFromAngles(t1, t2) {
   ];
 }
 
-// ── S³ Geodesic (SLERP) ──
 function slerp(u, v, t) {
   let d = dot4(u, v);
   let vv = v.slice();
@@ -331,7 +567,6 @@ function geodesicDist(u, v) {
   return Math.acos(Math.min(d, 1));
 }
 
-// ── Separable Geodesic ──
 function toTorusAngles(s) {
   const [a, b, c, d] = s;
   if (Math.abs(a) > 0.01 || Math.abs(b) > 0.01) {
@@ -375,7 +610,6 @@ function separableGeodesicDist() {
   return Math.sqrt(dt1 * dt1 + dt2 * dt2);
 }
 
-// ── Current Path ──
 function getCurrentState(t) {
   if (pathMode === 'separable' && bothProductStates) return separableGeodesicPath(t);
   return slerp(startState, endState, t);
@@ -411,7 +645,6 @@ function stateToShortLabel(s) {
   return parts.join('+').replace(/\+-/g, '-');
 }
 
-// ── Three.js Setup ──
 const canvas = document.getElementById('canvas3d');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -436,7 +669,6 @@ const dirLight2 = new THREE.DirectionalLight(0x6495ed, 0.4);
 dirLight2.position.set(-2, -1, 3);
 scene.add(dirLight2);
 
-// ── Axes ──
 function addAxis(dir, color) {
   const geo = new THREE.BufferGeometry().setFromPoints([
     new THREE.Vector3(0, 0, 0),
@@ -446,7 +678,6 @@ function addAxis(dir, color) {
 }
 addAxis([1,0,0], 0x666666); addAxis([0,1,0], 0x666666); addAxis([0,0,1], 0x666666);
 
-// ── Labels ──
 function makeSprite(text, color = '#ffffff', scale = 0.35) {
   const c = document.createElement('canvas');
   c.width = 256; c.height = 64;
@@ -478,7 +709,6 @@ for (const [label, pos] of Object.entries(basisPositions)) {
   scene.add(dot);
 }
 
-// ── Start / End Markers ──
 const startMarker = new THREE.Mesh(
   new THREE.SphereGeometry(0.035, 16, 16),
   new THREE.MeshBasicMaterial({ color: 0x00ff88 })
@@ -499,7 +729,6 @@ function updateEndpointMarkers() {
   if (ep) { endMarker.position.copy(ep); endLabel.position.copy(ep).add(new THREE.Vector3(0, -0.07, 0)); }
 }
 
-// ── Product State Surface (Segre Variety) ──
 function buildSegreeSurface() {
   const N = 100;
   const vertices = [], indices = [], grid = [];
@@ -549,7 +778,6 @@ function nearestProductPoint(pt) {
   return best;
 }
 
-// ── Path Tubes (dynamic) ──
 let geodesicTube = null, sepTube = null;
 
 function clearTube(tube) {
@@ -577,8 +805,6 @@ function rebuildPaths() {
   clearTube(geodesicTube);
   clearTube(sepTube);
 
-  // Ensure endpoints are in the same hemisphere of S³ so the slerp,
-  // markers, and stereo projection all agree on the shorter arc.
   if (dot4(startState, endState) < 0) {
     endState = endState.map(x => -x);
   }
@@ -623,7 +849,6 @@ function updateDistancePanel() {
   }
 }
 
-// ── State Point ──
 const statePoint = new THREE.Mesh(
   new THREE.SphereGeometry(0.04, 24, 24), new THREE.MeshBasicMaterial({ color: 0xffffff })
 );
@@ -633,7 +858,6 @@ const glowPoint = new THREE.Mesh(
 );
 scene.add(glowPoint);
 
-// Distance line
 const distLineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
 const distLine = new THREE.Line(distLineGeo, new THREE.LineDashedMaterial({
   color: 0xffffff, transparent: true, opacity: 0.4, dashSize: 0.03, gapSize: 0.02
@@ -645,7 +869,6 @@ const nearestDot = new THREE.Mesh(
 );
 scene.add(nearestDot);
 
-// Trail
 const trailMax = 150;
 const trailPositions = new Float32Array(trailMax * 3);
 const trailGeo = new THREE.BufferGeometry();
@@ -654,7 +877,6 @@ const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({ color: 0xff
 scene.add(trail);
 let trailIdx = 0, trailCount = 0;
 
-// ── Bloch Sphere Drawing ──
 function drawBloch(canvasId, vec) {
   const c = document.getElementById(canvasId);
   const ctx = c.getContext('2d');
@@ -684,7 +906,6 @@ function drawBloch(canvasId, vec) {
   ctx.fillText(`|r|=${len.toFixed(2)}`, w-4, h-4);
 }
 
-// ── Concurrence Graph ──
 function drawGraph() {
   const c = document.getElementById('graphCanvas');
   const ctx = c.getContext('2d');
@@ -699,7 +920,6 @@ function drawGraph() {
   ctx.textAlign = 'right'; ctx.fillText('1', pad.l-3, pad.t+4); ctx.fillText('0', pad.l-3, pad.t+gh+3);
   ctx.textAlign = 'center'; ctx.fillText('Start', pad.l, pad.t+gh+12); ctx.fillText('End', pad.l+gw, pad.t+gh+12);
 
-  // Reference: precompute concurrence along geodesic (dashed)
   ctx.strokeStyle = 'rgba(255,68,102,0.2)'; ctx.setLineDash([3,3]); ctx.beginPath();
   for (let i = 0; i <= 100; i++) {
     const t = i/100; const s = slerp(startState, endState, t);
@@ -709,7 +929,6 @@ function drawGraph() {
   }
   ctx.stroke(); ctx.setLineDash([]);
 
-  // Active trace
   if (concurrenceHistory.length > 1) {
     const colors = { geodesic: '#ff4466', separable: '#ffaa00', both: '#ff4466' };
     ctx.strokeStyle = colors[pathMode] || '#ff4466'; ctx.lineWidth = 2;
@@ -728,7 +947,6 @@ function drawGraph() {
   }
 }
 
-// ── Update ──
 function updateVis(t) {
   const state = getCurrentState(t);
   const [a, b, c, d] = state;
@@ -756,7 +974,6 @@ function updateVis(t) {
   trail.geometry.attributes.position.needsUpdate = true;
   trail.geometry.setDrawRange(0, trailCount);
 
-  // UI
   const cVal = document.getElementById('concurrence-val');
   cVal.textContent = C.toFixed(3);
   const hsl = `hsl(${210 - C*210}, 90%, ${55 + C*15}%)`;
@@ -775,13 +992,11 @@ function updateVis(t) {
   drawGraph();
 }
 
-// ── Path Visibility ──
 function updatePathVisibility() {
   if (geodesicTube) geodesicTube.visible = (pathMode === 'geodesic' || pathMode === 'both');
   if (sepTube) sepTube.visible = (pathMode === 'separable' || pathMode === 'both');
 }
 
-// ── Controls ──
 function resolveState(selectId) {
   const val = document.getElementById(selectId).value;
   if (val === 'random') return randomState();
@@ -825,7 +1040,6 @@ function resetAnim() {
   updateVis(0);
 }
 
-// ── Animation Loop ──
 let lastTime = 0;
 function animate(time) {
   requestAnimationFrame(animate);
@@ -846,10 +1060,483 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// ── Init ──
 rebuildPaths();
 requestAnimationFrame(animate);
-
 </script>
+
+<!-- ═══ Kernel Space Tab Logic ═══ -->
+<script>
+(function() {
+  const COL_BAS = '#ff7f0e';
+  const COL_NON = '#1f77b4';
+
+  let studies = [];
+  let activeStudy = null;
+  let currentEpochIdx = 0;
+  let ksPlaying = false;
+  let playInterval = null;
+
+  let displayPoints = [];
+  let targetPoints = [];
+  let animating = false;
+  let animStart = 0;
+  const ANIM_DUR = 250;
+
+  const dropZone = document.getElementById('ks-drop-zone');
+  const fileInput = document.getElementById('ks-file-input');
+  const studySelect = document.getElementById('ks-study-select');
+  const epochSlider = document.getElementById('ks-epoch-slider');
+  const playBtn = document.getElementById('ks-play-btn');
+  const colorMode = document.getElementById('ks-color-mode');
+  const scatterCanvas = document.getElementById('ks-scatter-canvas');
+  const scatterCtx = scatterCanvas.getContext('2d');
+  const tooltip = document.getElementById('ks-tooltip');
+  const epochCanvas = document.getElementById('ks-epoch-canvas');
+  const epochCtx = epochCanvas.getContext('2d');
+
+  function viridis(t) {
+    t = Math.max(0, Math.min(1, t));
+    const c = [
+      [68, 1, 84], [72, 35, 116], [64, 67, 135], [52, 94, 141],
+      [33, 145, 140], [94, 201, 98], [253, 231, 37]
+    ];
+    const idx = t * (c.length - 1);
+    const lo = Math.floor(idx), hi = Math.min(lo + 1, c.length - 1);
+    const f = idx - lo;
+    return `rgb(${Math.round(c[lo][0]+(c[hi][0]-c[lo][0])*f)},${Math.round(c[lo][1]+(c[hi][1]-c[lo][1])*f)},${Math.round(c[lo][2]+(c[hi][2]-c[lo][2])*f)})`;
+  }
+
+  function studyLabel(meta) {
+    const parts = [];
+    if (meta.num_layers) parts.push(`${meta.num_layers} layers`);
+    if (meta.image_size) parts.push(meta.image_size);
+    if (meta.cohort) parts.push(meta.cohort);
+    if (meta.noise_type) parts.push(meta.noise_type);
+    return parts.join(' · ') || 'Study';
+  }
+
+  function loadStudy(data) {
+    const label = studyLabel(data.metadata);
+    studies.push({ data, label });
+    updateStudySelect();
+    if (studies.length === 1) selectStudy(0);
+    showScatter();
+  }
+
+  function updateStudySelect() {
+    studySelect.innerHTML = '';
+    studies.forEach((s, i) => {
+      const opt = document.createElement('option');
+      opt.value = i; opt.textContent = s.label;
+      studySelect.appendChild(opt);
+    });
+    studySelect.disabled = studies.length === 0;
+  }
+
+  function selectStudy(idx) {
+    activeStudy = studies[idx];
+    if (!activeStudy) return;
+    const epochs = activeStudy.data.epochs;
+    epochSlider.max = epochs.length - 1;
+    epochSlider.value = 0;
+    epochSlider.disabled = false;
+    playBtn.disabled = false;
+    currentEpochIdx = 0;
+    setEpoch(0, false);
+  }
+
+  function showScatter() {
+    document.getElementById('ks-empty').style.display = 'none';
+    document.getElementById('ks-scatter-area').style.display = 'block';
+    document.getElementById('ks-epoch-strip').style.display = 'block';
+    document.getElementById('ks-metrics').style.display = 'block';
+    resizeCanvases();
+  }
+
+  function resizeCanvases() {
+    const area = document.getElementById('ks-scatter-area');
+    const dpr = window.devicePixelRatio || 1;
+    scatterCanvas.width = area.clientWidth * dpr;
+    scatterCanvas.height = area.clientHeight * dpr;
+    scatterCanvas.style.width = area.clientWidth + 'px';
+    scatterCanvas.style.height = area.clientHeight + 'px';
+    scatterCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const strip = document.getElementById('ks-epoch-strip');
+    epochCanvas.width = strip.clientWidth * dpr;
+    epochCanvas.height = strip.clientHeight * dpr;
+    epochCanvas.style.width = strip.clientWidth + 'px';
+    epochCanvas.style.height = strip.clientHeight + 'px';
+    epochCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function setEpoch(idx, animate = true) {
+    if (!activeStudy) return;
+    const epochs = activeStudy.data.epochs;
+    idx = Math.max(0, Math.min(idx, epochs.length - 1));
+    currentEpochIdx = idx;
+    const ep = epochs[idx];
+    document.getElementById('ks-epoch-label').textContent = `${ep.epoch}`;
+    document.getElementById('ks-step-val').textContent = ep.step;
+    document.getElementById('ks-cost-val').textContent = typeof ep.cost === 'number' ? ep.cost.toFixed(3) : '—';
+    document.getElementById('ks-acc-val').textContent = typeof ep.accuracy === 'number' ? (ep.accuracy * 100).toFixed(1) + '%' : '—';
+    epochSlider.value = idx;
+
+    const newTargets = ep.points.map(p => ({ ...p }));
+
+    if (animate && displayPoints.length === newTargets.length) {
+      targetPoints = newTargets;
+      animStart = performance.now();
+      animating = true;
+    } else {
+      displayPoints = newTargets;
+      targetPoints = newTargets;
+      animating = false;
+      drawScatter();
+    }
+
+    updateMetrics(ep.points);
+    drawEpochStrip();
+  }
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  function animFrame(now) {
+    if (!animating) return;
+    let t = (now - animStart) / ANIM_DUR;
+    if (t >= 1) { t = 1; animating = false; }
+    t = t * t * (3 - 2 * t);
+
+    for (let i = 0; i < displayPoints.length; i++) {
+      displayPoints[i].x = lerp(displayPoints[i].x, targetPoints[i].x, t);
+      displayPoints[i].y = lerp(displayPoints[i].y, targetPoints[i].y, t);
+      displayPoints[i].label = targetPoints[i].label;
+      displayPoints[i].h_score = targetPoints[i].h_score;
+      displayPoints[i].id = targetPoints[i].id;
+    }
+    if (t >= 1) displayPoints = targetPoints.map(p => ({ ...p }));
+    drawScatter();
+    if (animating) requestAnimationFrame(animFrame);
+  }
+
+  function getScatterBounds() {
+    if (!displayPoints.length) return { xMin: -1, xMax: 1, yMin: -1, yMax: 1 };
+    let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
+    for (const p of displayPoints) {
+      if (p.x < xMin) xMin = p.x;
+      if (p.x > xMax) xMax = p.x;
+      if (p.y < yMin) yMin = p.y;
+      if (p.y > yMax) yMax = p.y;
+    }
+    const padX = (xMax - xMin) * 0.1 || 1;
+    const padY = (yMax - yMin) * 0.1 || 1;
+    return { xMin: xMin - padX, xMax: xMax + padX, yMin: yMin - padY, yMax: yMax + padY };
+  }
+
+  function drawScatter() {
+    const w = scatterCanvas.width / (window.devicePixelRatio || 1);
+    const h = scatterCanvas.height / (window.devicePixelRatio || 1);
+    scatterCtx.clearRect(0, 0, w, h);
+
+    if (!displayPoints.length) return;
+
+    const pad = 40;
+    const bounds = getScatterBounds();
+    const sx = (x) => pad + ((x - bounds.xMin) / (bounds.xMax - bounds.xMin)) * (w - 2 * pad);
+    const sy = (y) => h - pad - ((y - bounds.yMin) / (bounds.yMax - bounds.yMin)) * (h - 2 * pad);
+
+    // Grid
+    scatterCtx.strokeStyle = 'rgba(88,166,255,0.08)';
+    scatterCtx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const gx = pad + i * (w - 2 * pad) / 4;
+      scatterCtx.beginPath(); scatterCtx.moveTo(gx, pad); scatterCtx.lineTo(gx, h - pad); scatterCtx.stroke();
+      const gy = pad + i * (h - 2 * pad) / 4;
+      scatterCtx.beginPath(); scatterCtx.moveTo(pad, gy); scatterCtx.lineTo(w - pad, gy); scatterCtx.stroke();
+    }
+
+    const mode = colorMode.value;
+
+    // h_score threshold
+    if (document.getElementById('ks-show-threshold').checked && mode === 'h_score') {
+      const thresh = parseFloat(document.getElementById('ks-threshold-val').value) || 0.15;
+      scatterCtx.strokeStyle = 'rgba(255,68,102,0.5)';
+      scatterCtx.lineWidth = 1;
+      scatterCtx.setLineDash([4, 4]);
+      // Draw threshold as colored band hint text
+      scatterCtx.fillStyle = 'rgba(255,68,102,0.6)';
+      scatterCtx.font = '10px monospace';
+      scatterCtx.textAlign = 'left';
+      scatterCtx.fillText(`h_score threshold = ${thresh.toFixed(2)}`, pad + 4, pad - 6);
+      scatterCtx.setLineDash([]);
+    }
+
+    // Points
+    for (const p of displayPoints) {
+      const px = sx(p.x), py = sy(p.y);
+      let col;
+      if (mode === 'label') {
+        col = p.label === 1 ? COL_BAS : COL_NON;
+      } else {
+        col = viridis(p.h_score || 0);
+      }
+      scatterCtx.globalAlpha = 0.75;
+      scatterCtx.fillStyle = col;
+      scatterCtx.beginPath();
+      scatterCtx.arc(px, py, 5, 0, Math.PI * 2);
+      scatterCtx.fill();
+    }
+    scatterCtx.globalAlpha = 1;
+
+    // Axis labels
+    scatterCtx.fillStyle = '#6e7681';
+    scatterCtx.font = '10px monospace';
+    scatterCtx.textAlign = 'center';
+    scatterCtx.fillText('UMAP 1', w / 2, h - 8);
+    scatterCtx.save();
+    scatterCtx.translate(12, h / 2);
+    scatterCtx.rotate(-Math.PI / 2);
+    scatterCtx.fillText('UMAP 2', 0, 0);
+    scatterCtx.restore();
+  }
+
+  // Hover tooltip
+  scatterCanvas.addEventListener('mousemove', (e) => {
+    if (!displayPoints.length) return;
+    const rect = scatterCanvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const w = rect.width, h = rect.height;
+    const pad = 40;
+    const bounds = getScatterBounds();
+    let closest = null, closestDist = Infinity;
+    for (const p of displayPoints) {
+      const px = pad + ((p.x - bounds.xMin) / (bounds.xMax - bounds.xMin)) * (w - 2 * pad);
+      const py = h - pad - ((p.y - bounds.yMin) / (bounds.yMax - bounds.yMin)) * (h - 2 * pad);
+      const dist = Math.sqrt((mx - px) ** 2 + (my - py) ** 2);
+      if (dist < closestDist && dist < 15) { closestDist = dist; closest = p; }
+    }
+    if (closest) {
+      tooltip.style.display = 'block';
+      tooltip.style.left = (e.clientX - rect.left + 12) + 'px';
+      tooltip.style.top = (e.clientY - rect.top - 10) + 'px';
+      tooltip.innerHTML = `<b>ID ${closest.id}</b><br>Label: ${closest.label === 1 ? 'BAS' : 'non-BAS'}<br>h_score: ${(closest.h_score || 0).toFixed(3)}<br>(${closest.x.toFixed(2)}, ${closest.y.toFixed(2)})`;
+    } else {
+      tooltip.style.display = 'none';
+    }
+  });
+  scatterCanvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+
+  function updateMetrics(points) {
+    const bas = points.filter(p => p.label === 1);
+    const non = points.filter(p => p.label === 0);
+
+    if (bas.length && non.length) {
+      const basCx = bas.reduce((s, p) => s + p.x, 0) / bas.length;
+      const basCy = bas.reduce((s, p) => s + p.y, 0) / bas.length;
+      const nonCx = non.reduce((s, p) => s + p.x, 0) / non.length;
+      const nonCy = non.reduce((s, p) => s + p.y, 0) / non.length;
+      const cdist = Math.sqrt((basCx - nonCx) ** 2 + (basCy - nonCy) ** 2);
+      document.getElementById('ks-cluster-dist').textContent = cdist.toFixed(3);
+
+      const sil = computeSilhouette(points);
+      const silEl = document.getElementById('ks-silhouette');
+      let badgeColor = '#6e7681';
+      if (sil > 0.5) badgeColor = '#3fb950';
+      else if (sil < 0) badgeColor = '#f85149';
+      silEl.innerHTML = `<span class="sil-badge" style="background:${badgeColor};color:#fff">${sil.toFixed(3)}</span>`;
+    }
+  }
+
+  function computeSilhouette(points) {
+    const n = points.length;
+    if (n < 2) return 0;
+    const labels = [...new Set(points.map(p => p.label))];
+    if (labels.length < 2) return 0;
+
+    let totalSil = 0;
+    for (let i = 0; i < n; i++) {
+      const pi = points[i];
+      let sameSum = 0, sameCount = 0;
+      let otherSum = 0, otherCount = 0;
+
+      for (let j = 0; j < n; j++) {
+        if (i === j) continue;
+        const pj = points[j];
+        const d = Math.sqrt((pi.x - pj.x) ** 2 + (pi.y - pj.y) ** 2);
+        if (pj.label === pi.label) { sameSum += d; sameCount++; }
+        else { otherSum += d; otherCount++; }
+      }
+
+      const a = sameCount > 0 ? sameSum / sameCount : 0;
+      const b = otherCount > 0 ? otherSum / otherCount : 0;
+      const s = Math.max(a, b) > 0 ? (b - a) / Math.max(a, b) : 0;
+      totalSil += s;
+    }
+    return totalSil / n;
+  }
+
+  function drawEpochStrip() {
+    if (!activeStudy) return;
+    const epochs = activeStudy.data.epochs;
+    const strip = document.getElementById('ks-epoch-strip');
+    const w = strip.clientWidth, h = strip.clientHeight;
+    epochCtx.clearRect(0, 0, w, h);
+
+    const pad = { l: 40, r: 16, t: 10, b: 16 };
+    const gw = w - pad.l - pad.r, gh = h - pad.t - pad.b;
+
+    // Axes
+    epochCtx.strokeStyle = 'rgba(88,166,255,0.2)';
+    epochCtx.lineWidth = 1;
+    epochCtx.beginPath();
+    epochCtx.moveTo(pad.l, pad.t); epochCtx.lineTo(pad.l, pad.t + gh);
+    epochCtx.lineTo(pad.l + gw, pad.t + gh); epochCtx.stroke();
+
+    const costs = epochs.map(e => e.cost || 0);
+    const accs = epochs.map(e => e.accuracy || 0);
+    const maxCost = Math.max(...costs, 0.01);
+
+    // Cost line (grey)
+    epochCtx.strokeStyle = 'rgba(139,148,158,0.7)';
+    epochCtx.lineWidth = 1.5;
+    epochCtx.beginPath();
+    epochs.forEach((ep, i) => {
+      const x = pad.l + (i / Math.max(epochs.length - 1, 1)) * gw;
+      const y = pad.t + gh - ((ep.cost || 0) / maxCost) * gh;
+      i === 0 ? epochCtx.moveTo(x, y) : epochCtx.lineTo(x, y);
+    });
+    epochCtx.stroke();
+
+    // Accuracy line (orange)
+    epochCtx.strokeStyle = '#ff7f0e';
+    epochCtx.lineWidth = 1.5;
+    epochCtx.beginPath();
+    epochs.forEach((ep, i) => {
+      const x = pad.l + (i / Math.max(epochs.length - 1, 1)) * gw;
+      const y = pad.t + gh - (ep.accuracy || 0) * gh;
+      i === 0 ? epochCtx.moveTo(x, y) : epochCtx.lineTo(x, y);
+    });
+    epochCtx.stroke();
+
+    // Cursor line
+    const cursorX = pad.l + (currentEpochIdx / Math.max(epochs.length - 1, 1)) * gw;
+    epochCtx.strokeStyle = '#58a6ff';
+    epochCtx.lineWidth = 1.5;
+    epochCtx.beginPath();
+    epochCtx.moveTo(cursorX, pad.t); epochCtx.lineTo(cursorX, pad.t + gh);
+    epochCtx.stroke();
+
+    // Labels
+    epochCtx.fillStyle = '#6e7681';
+    epochCtx.font = '9px monospace';
+    epochCtx.textAlign = 'left';
+    epochCtx.fillText('cost', pad.l + 2, pad.t + 10);
+    epochCtx.fillStyle = '#ff7f0e';
+    epochCtx.fillText('acc', pad.l + 30, pad.t + 10);
+  }
+
+  // Click on epoch strip to jump
+  document.getElementById('ks-epoch-strip').addEventListener('click', (e) => {
+    if (!activeStudy) return;
+    const strip = document.getElementById('ks-epoch-strip');
+    const rect = strip.getBoundingClientRect();
+    const pad = { l: 40, r: 16 };
+    const gw = rect.width - pad.l - pad.r;
+    const x = e.clientX - rect.left - pad.l;
+    const frac = Math.max(0, Math.min(1, x / gw));
+    const idx = Math.round(frac * (activeStudy.data.epochs.length - 1));
+    setEpoch(idx);
+  });
+
+  // File loading
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault(); dropZone.classList.remove('dragover');
+    handleFiles(e.dataTransfer.files);
+  });
+  fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+
+  function handleFiles(files) {
+    for (const file of files) {
+      if (!file.name.endsWith('.json')) continue;
+      const loading = document.getElementById('ks-loading');
+      loading.style.display = 'block';
+      const fill = document.getElementById('ks-progress-fill');
+      fill.style.width = '30%';
+
+      const reader = new FileReader();
+      reader.onprogress = (e) => {
+        if (e.lengthComputable) fill.style.width = Math.round((e.loaded / e.total) * 90) + '%';
+      };
+      reader.onload = (e) => {
+        fill.style.width = '100%';
+        try {
+          const data = JSON.parse(e.target.result);
+          loadStudy(data);
+          dropZone.classList.add('has-data');
+          dropZone.textContent = `Loaded: ${file.name}`;
+        } catch (err) {
+          alert('Failed to parse JSON: ' + err.message);
+        }
+        setTimeout(() => { loading.style.display = 'none'; }, 500);
+      };
+      reader.readAsText(file);
+    }
+  }
+
+  studySelect.addEventListener('change', () => selectStudy(parseInt(studySelect.value)));
+
+  let debounceTimer = null;
+  epochSlider.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => setEpoch(parseInt(epochSlider.value)), 50);
+  });
+
+  playBtn.addEventListener('click', () => {
+    ksPlaying = !ksPlaying;
+    playBtn.textContent = ksPlaying ? '⏸ Pause' : '▶ Play';
+    if (ksPlaying) {
+      const fps = parseInt(document.getElementById('ks-fps-select').value) || 3;
+      playInterval = setInterval(() => {
+        if (!activeStudy) return;
+        let next = currentEpochIdx + 1;
+        if (next >= activeStudy.data.epochs.length) { next = 0; }
+        setEpoch(next);
+      }, 1000 / fps);
+    } else {
+      clearInterval(playInterval);
+    }
+  });
+
+  colorMode.addEventListener('change', drawScatter);
+  document.getElementById('ks-show-threshold').addEventListener('change', drawScatter);
+  document.getElementById('ks-threshold-val').addEventListener('input', drawScatter);
+
+  window.addEventListener('resize', () => {
+    if (document.getElementById('tab-kernel').classList.contains('active')) {
+      resizeCanvases();
+      drawScatter();
+      drawEpochStrip();
+    }
+  });
+
+  window.addEventListener('ks-activated', () => {
+    resizeCanvases();
+    drawScatter();
+    drawEpochStrip();
+  });
+
+  // Animation loop for smooth transitions
+  function ksAnimLoop(now) {
+    requestAnimationFrame(ksAnimLoop);
+    if (animating) animFrame(now);
+  }
+  requestAnimationFrame(ksAnimLoop);
+})();
+</script>
+
 </body>
 </html>
