@@ -242,6 +242,37 @@
     border-top: 1px solid rgba(88,166,255,0.15); position: relative; cursor: pointer;
   }
   #ks-epoch-canvas { width: 100%; height: 100%; }
+
+  /* ── Browse Folder Button ── */
+  #ks-browse-folder-btn {
+    background: rgba(88,166,255,0.1); color: #8b949e;
+    border: 1px solid rgba(88,166,255,0.2); border-radius: 5px;
+    padding: 5px 10px; font-family: inherit; font-size: 11px;
+    cursor: pointer; width: 100%; margin-top: 4px;
+  }
+  #ks-browse-folder-btn:hover { background: rgba(88,166,255,0.2); color: #e6edf3; }
+
+  /* ── No-UMAP Overlay ── */
+  #ks-no-umap {
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    display: none; align-items: center; justify-content: center;
+    flex-direction: column; gap: 12px;
+    background: rgba(13,17,23,0.8); backdrop-filter: blur(6px); z-index: 20;
+  }
+  #ks-no-umap .no-umap-icon { font-size: 30px; opacity: 0.7; }
+  #ks-no-umap .no-umap-title { font-size: 14px; color: #e6edf3; font-weight: 600; }
+  #ks-no-umap .no-umap-sub {
+    font-size: 11px; color: #8b949e; max-width: 420px;
+    text-align: center; line-height: 1.5;
+  }
+  #ks-no-umap .no-umap-cmd-wrap {
+    background: rgba(13,17,23,0.95); border: 1px solid rgba(88,166,255,0.25);
+    border-radius: 6px; padding: 10px 16px; cursor: pointer;
+    max-width: 500px; transition: border-color 0.2s;
+  }
+  #ks-no-umap .no-umap-cmd-wrap:hover { border-color: rgba(88,166,255,0.55); }
+  #ks-no-umap .no-umap-cmd { font-size: 11px; color: #58a6ff; word-break: break-all; }
+  #ks-no-umap .no-umap-copy-hint { font-size: 10px; color: #6e7681; margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -379,9 +410,12 @@
 
       <div class="ks-group">
         <div id="ks-drop-zone">
-          Drop kernel_umap.json here<br>or click to browse
+          Drop <strong>kernel_umap.json</strong><br>or a <strong>results folder</strong><br>
+          <span style="font-size:10px; color:#484f58">click to browse JSON files</span>
         </div>
-        <input type="file" id="ks-file-input" accept=".json" multiple>
+        <button id="ks-browse-folder-btn">Browse Folder…</button>
+        <input type="file" id="ks-file-input" accept=".json" multiple style="display:none">
+        <input type="file" id="ks-folder-input" webkitdirectory multiple style="display:none">
         <div id="ks-loading">
           <div class="ks-progress-bar"><div class="ks-progress-fill" id="ks-progress-fill"></div></div>
         </div>
@@ -461,6 +495,17 @@
             <div class="ref-bar-wrap" id="ks-ref-non-bas"></div>
           </div>
           <div style="color:#6e7681; font-size:9px; margin-top:4px;">|amplitude|² per basis state</div>
+        </div>
+        <div id="ks-no-umap">
+          <div class="no-umap-icon">⚗</div>
+          <div class="no-umap-title">UMAP not yet computed</div>
+          <div class="no-umap-sub" id="ks-no-umap-sub">
+            Training metrics loaded from run files. Generate UMAP scatter by running:
+          </div>
+          <div class="no-umap-cmd-wrap" id="ks-no-umap-cmd-wrap" title="Click to copy">
+            <div class="no-umap-cmd" id="ks-no-umap-cmd">python scripts/export_kernel_umap.py --results-dir &lt;folder&gt;</div>
+            <div class="no-umap-copy-hint" id="ks-no-umap-copy-hint">click to copy command</div>
+          </div>
         </div>
       </div>
       <div id="ks-epoch-strip" style="display:none">
@@ -1122,6 +1167,7 @@ requestAnimationFrame(animate);
 
   const dropZone = document.getElementById('ks-drop-zone');
   const fileInput = document.getElementById('ks-file-input');
+  const folderInput = document.getElementById('ks-folder-input');
   const studySelect = document.getElementById('ks-study-select');
   const snapBtns = document.querySelectorAll('.ks-snap-btn');
   const colorMode = document.getElementById('ks-color-mode');
@@ -1131,30 +1177,258 @@ requestAnimationFrame(animate);
   const epochCanvas = document.getElementById('ks-epoch-canvas');
   const epochCtx = epochCanvas.getContext('2d');
 
+  // ── File / entry reading helpers ──
+  function readFileAsText(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result);
+      reader.onerror = reject;
+      reader.readAsText(file);
+    });
+  }
+
+  function readEntryAsText(fileEntry) {
+    return new Promise((resolve, reject) => {
+      fileEntry.file(f => {
+        const reader = new FileReader();
+        reader.onload = e => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsText(f);
+      }, reject);
+    });
+  }
+
+  function readAllDirEntries(reader) {
+    return new Promise((resolve, reject) => {
+      const all = [];
+      function readBatch() {
+        reader.readEntries(batch => {
+          if (!batch.length) { resolve(all); return; }
+          all.push(...batch);
+          readBatch();
+        }, reject);
+      }
+      readBatch();
+    });
+  }
+
+  // ── Loading bar helpers ──
+  function showLoadingBar(pct) {
+    document.getElementById('ks-loading').style.display = 'block';
+    document.getElementById('ks-progress-fill').style.width = (pct || 10) + '%';
+  }
+  function updateLoadingBar(pct) {
+    document.getElementById('ks-progress-fill').style.width = pct + '%';
+  }
+  function hideLoadingBar() {
+    setTimeout(() => { document.getElementById('ks-loading').style.display = 'none'; }, 500);
+  }
+  function setDropZoneLoaded(html) {
+    dropZone.classList.add('has-data');
+    dropZone.innerHTML = html;
+  }
+
+  // ── Metadata parsing from folder name ──
+  function parseFolderName(name) {
+    const meta = {};
+    const lm = name.match(/(\d+)\s*layers?/i);
+    if (lm) meta.num_layers = parseInt(lm[1]);
+    const sm = name.match(/(\d+)\s*samples?/i);
+    if (sm) meta.num_samples = parseInt(sm[1]);
+    const szm = name.match(/(\d+)[x×](\d+)/);
+    if (szm) meta.image_size = `${szm[1]}x${szm[2]}`;
+    const nm = name.match(/noise[,_\s]+([\d.]+)/i);
+    if (nm) meta.noise = parseFloat(nm[1]);
+    for (const c of ['EE', 'EP', 'PE', 'PP', 'EM', 'ME', 'MM']) {
+      if (name.includes(c)) { meta.cohort = c; break; }
+    }
+    if (/noisy/i.test(name)) meta.noise_type = 'noisy';
+    else if (/binary/i.test(name)) meta.noise_type = 'binary';
+    return meta;
+  }
+
+  // ── Build a study data object from raw run_*.json files ──
+  function buildStudyFromRuns(runs, folderName) {
+    function avgLists(lists) {
+      if (!lists.length) return [];
+      const maxLen = Math.max(...lists.map(l => l.length));
+      return Array.from({ length: maxLen }, (_, i) => {
+        const vals = lists.map(l => l[i]).filter(v => v != null && !isNaN(v));
+        return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+      });
+    }
+    const allCosts    = runs.filter(r => r.costs).map(r => r.costs);
+    const allAccs     = runs.filter(r => r.accuracies).map(r => r.accuracies);
+    const allEntBas   = runs.filter(r => r.entanglement_entropy_history_bas).map(r => r.entanglement_entropy_history_bas);
+    const allEntNon   = runs.filter(r => r.entanglement_entropy_history_not_bas).map(r => r.entanglement_entropy_history_not_bas);
+
+    const config   = (runs[0] || {}).config || {};
+    const metadata = parseFolderName(folderName);
+    metadata.num_runs = runs.length;
+    if (config.num_layers  !== undefined && !metadata.num_layers)  metadata.num_layers  = config.num_layers;
+    if (config.image_size  !== undefined && !metadata.image_size)  metadata.image_size  = `${config.image_size}x${config.image_size}`;
+    if (config.noise       !== undefined &&  metadata.noise == null) metadata.noise      = config.noise;
+
+    const metrics = {
+      steps:       allCosts.length ? allCosts[0].map((_, i) => i) : [],
+      costs:       avgLists(allCosts),
+      accuracies:  avgLists(allAccs),
+      entropy_bas: avgLists(allEntBas),
+      entropy_non_bas: avgLists(allEntNon),
+    };
+
+    let reference_states = null;
+    for (const run of runs) {
+      if (run.reference_states && (run.reference_states.bas || run.reference_states.not_bas)) {
+        reference_states = run.reference_states;
+        break;
+      }
+    }
+
+    const data = { metadata, snapshots: [], metrics, _no_umap: true, _folder_name: folderName };
+    if (reference_states) data.reference_states = reference_states;
+    return data;
+  }
+
+  // ── Folder drop handler (FileSystem API) ──
+  async function handleDroppedEntry(entry, depth) {
+    depth = depth || 0;
+    if (depth > 2) return;
+
+    if (entry.isFile) {
+      if (!entry.name.endsWith('.json')) return;
+      showLoadingBar(20);
+      try {
+        const data = JSON.parse(await readEntryAsText(entry));
+        loadStudy(data);
+        setDropZoneLoaded(`✓ ${entry.name}`);
+      } catch (err) { alert('Failed to parse JSON: ' + err.message); }
+      hideLoadingBar();
+      return;
+    }
+
+    const allEntries = await readAllDirEntries(entry.createReader());
+
+    // 1. kernel_umap.json present?
+    const umapEntry = allEntries.find(e => e.isFile && e.name === 'kernel_umap.json');
+    if (umapEntry) {
+      showLoadingBar(20);
+      try {
+        loadStudy(JSON.parse(await readEntryAsText(umapEntry)));
+        setDropZoneLoaded(`✓ ${entry.name}/kernel_umap.json`);
+      } catch (err) { alert('Failed to load kernel_umap.json: ' + err.message); }
+      hideLoadingBar();
+      return;
+    }
+
+    // 2. run_*.json files present?
+    const runEntries = allEntries
+      .filter(e => e.isFile && /^run_\d+\.json$/.test(e.name))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    if (runEntries.length > 0) {
+      showLoadingBar(5);
+      try {
+        const runs = [];
+        for (let i = 0; i < runEntries.length; i++) {
+          updateLoadingBar(Math.round(5 + 85 * (i / runEntries.length)));
+          runs.push(JSON.parse(await readEntryAsText(runEntries[i])));
+        }
+        loadStudy(buildStudyFromRuns(runs, entry.name));
+        setDropZoneLoaded(
+          `✓ ${entry.name}<br><span style="font-size:9px;color:#6e7681">${runs.length} runs · metrics only (no UMAP)</span>`
+        );
+      } catch (err) { alert('Error loading run files: ' + err.message); }
+      hideLoadingBar();
+      return;
+    }
+
+    // 3. Batch: parent folder containing result sub-folders
+    const subDirs = allEntries.filter(e => e.isDirectory && !e.name.startsWith('.'));
+    if (subDirs.length > 0 && depth === 0) {
+      for (const sub of subDirs) await handleDroppedEntry(sub, depth + 1);
+      return;
+    }
+
+    alert(`No kernel_umap.json or run_*.json files found in "${entry.name}"`);
+  }
+
+  // ── Folder browse handler (webkitdirectory input) ──
+  async function handleFolderInput(files) {
+    const arr = Array.from(files);
+
+    // Check for kernel_umap.json files
+    const umapFiles = arr.filter(f => f.name === 'kernel_umap.json');
+    if (umapFiles.length > 0) {
+      showLoadingBar(5);
+      for (let i = 0; i < umapFiles.length; i++) {
+        updateLoadingBar(Math.round(5 + 90 * ((i + 1) / umapFiles.length)));
+        try { loadStudy(JSON.parse(await readFileAsText(umapFiles[i]))); }
+        catch (err) { console.error('Error loading', umapFiles[i].name, err); }
+      }
+      hideLoadingBar();
+      setDropZoneLoaded(`✓ ${umapFiles.length} kernel_umap.json loaded`);
+      return;
+    }
+
+    // Group run_*.json by their immediate parent directory path
+    const runsByDir = new Map();
+    for (const f of arr) {
+      if (/^run_\d+\.json$/.test(f.name)) {
+        const parts = f.webkitRelativePath.split('/');
+        const dir   = parts.slice(0, -1).join('/');
+        if (!runsByDir.has(dir)) runsByDir.set(dir, []);
+        runsByDir.get(dir).push(f);
+      }
+    }
+
+    if (runsByDir.size > 0) {
+      showLoadingBar(5);
+      let count = 0;
+      for (const [dir, runFiles] of runsByDir) {
+        const sorted = runFiles.sort((a, b) => a.name.localeCompare(b.name));
+        try {
+          const runs = [];
+          for (let i = 0; i < sorted.length; i++) {
+            updateLoadingBar(Math.round(5 + 85 * ((count + (i + 1) / sorted.length) / runsByDir.size)));
+            runs.push(JSON.parse(await readFileAsText(sorted[i])));
+          }
+          loadStudy(buildStudyFromRuns(runs, dir.split('/').pop()));
+          count++;
+        } catch (err) { console.error('Error loading runs from', dir, err); }
+      }
+      hideLoadingBar();
+      setDropZoneLoaded(`✓ ${count} study folder(s) loaded`);
+      return;
+    }
+
+    alert('No kernel_umap.json or run_*.json files found in the selected folder.');
+  }
+
+  // ── viridis ──
   function viridis(t) {
     t = Math.max(0, Math.min(1, t));
     const c = [
-      [68, 1, 84], [72, 35, 116], [64, 67, 135], [52, 94, 141],
-      [33, 145, 140], [94, 201, 98], [253, 231, 37]
+      [68,1,84],[72,35,116],[64,67,135],[52,94,141],
+      [33,145,140],[94,201,98],[253,231,37]
     ];
     const idx = t * (c.length - 1);
-    const lo = Math.floor(idx), hi = Math.min(lo + 1, c.length - 1);
-    const f = idx - lo;
+    const lo = Math.floor(idx), hi = Math.min(lo + 1, c.length - 1), f = idx - lo;
     return `rgb(${Math.round(c[lo][0]+(c[hi][0]-c[lo][0])*f)},${Math.round(c[lo][1]+(c[hi][1]-c[lo][1])*f)},${Math.round(c[lo][2]+(c[hi][2]-c[lo][2])*f)})`;
   }
 
   function studyLabel(meta) {
     const parts = [];
-    if (meta.num_layers) parts.push(`${meta.num_layers} layers`);
+    if (meta.num_layers) parts.push(`${meta.num_layers}L`);
     if (meta.image_size) parts.push(meta.image_size);
-    if (meta.cohort) parts.push(meta.cohort);
+    if (meta.cohort)     parts.push(meta.cohort);
     if (meta.noise_type) parts.push(meta.noise_type);
-    return parts.join(' · ') || 'Study';
+    if (meta.num_runs)   parts.push(`×${meta.num_runs}`);
+    return parts.join(' ') || 'Study';
   }
 
   function loadStudy(data) {
-    const label = studyLabel(data.metadata);
-    studies.push({ data, label });
+    studies.push({ data, label: studyLabel(data.metadata) });
     updateStudySelect();
     if (studies.length === 1) selectStudy(0);
     showScatter();
@@ -1177,33 +1451,59 @@ requestAnimationFrame(animate);
     updateSnapButtons(0);
     setSnapshot(0, false);
     renderReferenceStates();
+    updateNoUmapState();
   }
 
   function updateSnapButtons(idx) {
-    snapBtns.forEach((btn, i) => btn.classList.toggle('active', i === idx));
+    const noUmap = activeStudy && activeStudy.data._no_umap;
+    snapBtns.forEach((btn, i) => {
+      btn.classList.toggle('active', i === idx && !noUmap);
+      btn.style.opacity = noUmap ? '0.3' : '';
+      btn.style.pointerEvents = noUmap ? 'none' : '';
+    });
   }
 
   function showScatter() {
     document.getElementById('ks-empty').style.display = 'none';
     document.getElementById('ks-scatter-area').style.display = 'block';
     document.getElementById('ks-epoch-strip').style.display = 'block';
-    document.getElementById('ks-metrics').style.display = 'block';
+    updateNoUmapState();
     resizeCanvases();
+    drawEpochStrip();
+  }
+
+  function updateNoUmapState() {
+    const noUmapEl  = document.getElementById('ks-no-umap');
+    const metricsEl = document.getElementById('ks-metrics');
+    if (!activeStudy) return;
+
+    if (activeStudy.data._no_umap) {
+      noUmapEl.style.display = 'flex';
+      metricsEl.style.display = 'none';
+      const n   = activeStudy.data.metadata.num_runs || '?';
+      const sub = document.getElementById('ks-no-umap-sub');
+      if (sub) sub.textContent = `Training metrics loaded from ${n} run file(s). Generate UMAP scatter by running:`;
+      const cmd = document.getElementById('ks-no-umap-cmd');
+      if (cmd) cmd.textContent = `python scripts/export_kernel_umap.py --results-dir "${activeStudy.data._folder_name || '<folder>'}"`;
+    } else {
+      noUmapEl.style.display = 'none';
+      metricsEl.style.display = 'block';
+    }
   }
 
   function resizeCanvases() {
     const area = document.getElementById('ks-scatter-area');
-    const dpr = window.devicePixelRatio || 1;
-    scatterCanvas.width = area.clientWidth * dpr;
+    const dpr  = window.devicePixelRatio || 1;
+    scatterCanvas.width  = area.clientWidth  * dpr;
     scatterCanvas.height = area.clientHeight * dpr;
-    scatterCanvas.style.width = area.clientWidth + 'px';
+    scatterCanvas.style.width  = area.clientWidth  + 'px';
     scatterCanvas.style.height = area.clientHeight + 'px';
     scatterCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const strip = document.getElementById('ks-epoch-strip');
-    epochCanvas.width = strip.clientWidth * dpr;
+    epochCanvas.width  = strip.clientWidth  * dpr;
     epochCanvas.height = strip.clientHeight * dpr;
-    epochCanvas.style.width = strip.clientWidth + 'px';
+    epochCanvas.style.width  = strip.clientWidth  + 'px';
     epochCanvas.style.height = strip.clientHeight + 'px';
     epochCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
@@ -1218,7 +1518,6 @@ requestAnimationFrame(animate);
     updateSnapButtons(idx);
 
     const newTargets = snap.points.map(p => ({ ...p }));
-
     if (animate && displayPoints.length === newTargets.length) {
       prevPoints = displayPoints.map(p => ({ ...p }));
       targetPoints = newTargets;
@@ -1226,12 +1525,11 @@ requestAnimationFrame(animate);
       animating = true;
     } else {
       displayPoints = newTargets;
-      targetPoints = newTargets;
-      prevPoints = newTargets.map(p => ({ ...p }));
+      targetPoints  = newTargets;
+      prevPoints    = newTargets.map(p => ({ ...p }));
       animating = false;
       drawScatter();
     }
-
     updateMetrics(snap.points);
     drawEpochStrip();
   }
@@ -1243,13 +1541,12 @@ requestAnimationFrame(animate);
     let t = (now - animStart) / ANIM_DUR;
     if (t >= 1) { t = 1; animating = false; }
     t = t * t * (3 - 2 * t);
-
     for (let i = 0; i < displayPoints.length; i++) {
-      displayPoints[i].x = lerp(prevPoints[i].x, targetPoints[i].x, t);
-      displayPoints[i].y = lerp(prevPoints[i].y, targetPoints[i].y, t);
-      displayPoints[i].label = targetPoints[i].label;
+      displayPoints[i].x       = lerp(prevPoints[i].x, targetPoints[i].x, t);
+      displayPoints[i].y       = lerp(prevPoints[i].y, targetPoints[i].y, t);
+      displayPoints[i].label   = targetPoints[i].label;
       displayPoints[i].h_score = targetPoints[i].h_score;
-      displayPoints[i].id = targetPoints[i].id;
+      displayPoints[i].id      = targetPoints[i].id;
     }
     if (t >= 1) displayPoints = targetPoints.map(p => ({ ...p }));
     drawScatter();
@@ -1261,10 +1558,8 @@ requestAnimationFrame(animate);
     let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
     for (const snap of activeStudy.data.snapshots) {
       for (const p of snap.points) {
-        if (p.x < xMin) xMin = p.x;
-        if (p.x > xMax) xMax = p.x;
-        if (p.y < yMin) yMin = p.y;
-        if (p.y > yMax) yMax = p.y;
+        if (p.x < xMin) xMin = p.x; if (p.x > xMax) xMax = p.x;
+        if (p.y < yMin) yMin = p.y; if (p.y > yMax) yMax = p.y;
       }
     }
     const padX = (xMax - xMin) * 0.1 || 1;
@@ -1276,16 +1571,14 @@ requestAnimationFrame(animate);
     const w = scatterCanvas.width / (window.devicePixelRatio || 1);
     const h = scatterCanvas.height / (window.devicePixelRatio || 1);
     scatterCtx.clearRect(0, 0, w, h);
-
     if (!displayPoints.length) return;
 
     const pad = 40;
     const bounds = getScatterBounds();
-    const sx = (x) => pad + ((x - bounds.xMin) / (bounds.xMax - bounds.xMin)) * (w - 2 * pad);
-    const sy = (y) => h - pad - ((y - bounds.yMin) / (bounds.yMax - bounds.yMin)) * (h - 2 * pad);
+    const sx = x => pad + ((x - bounds.xMin) / (bounds.xMax - bounds.xMin)) * (w - 2 * pad);
+    const sy = y => h - pad - ((y - bounds.yMin) / (bounds.yMax - bounds.yMin)) * (h - 2 * pad);
 
-    scatterCtx.strokeStyle = 'rgba(88,166,255,0.08)';
-    scatterCtx.lineWidth = 1;
+    scatterCtx.strokeStyle = 'rgba(88,166,255,0.08)'; scatterCtx.lineWidth = 1;
     for (let i = 0; i <= 4; i++) {
       const gx = pad + i * (w - 2 * pad) / 4;
       scatterCtx.beginPath(); scatterCtx.moveTo(gx, pad); scatterCtx.lineTo(gx, h - pad); scatterCtx.stroke();
@@ -1294,129 +1587,96 @@ requestAnimationFrame(animate);
     }
 
     const mode = colorMode.value;
-
     if (document.getElementById('ks-show-threshold').checked && mode === 'h_score') {
       const thresh = parseFloat(document.getElementById('ks-threshold-val').value) || 0.15;
       scatterCtx.fillStyle = 'rgba(255,68,102,0.6)';
-      scatterCtx.font = '10px monospace';
-      scatterCtx.textAlign = 'left';
+      scatterCtx.font = '10px monospace'; scatterCtx.textAlign = 'left';
       scatterCtx.fillText(`h_score threshold = ${thresh.toFixed(2)}`, pad + 4, pad - 6);
     }
 
     for (const p of displayPoints) {
-      const px = sx(p.x), py = sy(p.y);
-      let col;
-      if (mode === 'label') {
-        col = p.label === 1 ? COL_BAS : COL_NON;
-      } else {
-        col = viridis(p.h_score || 0);
-      }
+      const col = mode === 'label' ? (p.label === 1 ? COL_BAS : COL_NON) : viridis(p.h_score || 0);
       scatterCtx.globalAlpha = 0.75;
       scatterCtx.fillStyle = col;
-      scatterCtx.beginPath();
-      scatterCtx.arc(px, py, 5, 0, Math.PI * 2);
-      scatterCtx.fill();
+      scatterCtx.beginPath(); scatterCtx.arc(sx(p.x), sy(p.y), 5, 0, Math.PI * 2); scatterCtx.fill();
     }
     scatterCtx.globalAlpha = 1;
 
-    scatterCtx.fillStyle = '#6e7681';
-    scatterCtx.font = '10px monospace';
-    scatterCtx.textAlign = 'center';
+    scatterCtx.fillStyle = '#6e7681'; scatterCtx.font = '10px monospace'; scatterCtx.textAlign = 'center';
     scatterCtx.fillText('UMAP 1', w / 2, h - 8);
-    scatterCtx.save();
-    scatterCtx.translate(12, h / 2);
-    scatterCtx.rotate(-Math.PI / 2);
-    scatterCtx.fillText('UMAP 2', 0, 0);
-    scatterCtx.restore();
+    scatterCtx.save(); scatterCtx.translate(12, h / 2); scatterCtx.rotate(-Math.PI / 2);
+    scatterCtx.fillText('UMAP 2', 0, 0); scatterCtx.restore();
 
-    // Snapshot label
     const snapNames = ['Initial', 'Halfway', 'End'];
-    scatterCtx.fillStyle = '#58a6ff';
-    scatterCtx.font = 'bold 12px monospace';
-    scatterCtx.textAlign = 'left';
+    scatterCtx.fillStyle = '#58a6ff'; scatterCtx.font = 'bold 12px monospace'; scatterCtx.textAlign = 'left';
     scatterCtx.fillText(snapNames[currentSnapIdx] || '', pad + 4, pad + 16);
   }
 
   scatterCanvas.addEventListener('mousemove', (e) => {
     if (!displayPoints.length) return;
     const rect = scatterCanvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-    const w = rect.width, h = rect.height;
-    const pad = 40;
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const w = rect.width, h = rect.height, pad = 40;
     const bounds = getScatterBounds();
     let closest = null, closestDist = Infinity;
     for (const p of displayPoints) {
       const px = pad + ((p.x - bounds.xMin) / (bounds.xMax - bounds.xMin)) * (w - 2 * pad);
       const py = h - pad - ((p.y - bounds.yMin) / (bounds.yMax - bounds.yMin)) * (h - 2 * pad);
-      const dist = Math.sqrt((mx - px) ** 2 + (my - py) ** 2);
-      if (dist < closestDist && dist < 15) { closestDist = dist; closest = p; }
+      const d  = Math.sqrt((mx - px) ** 2 + (my - py) ** 2);
+      if (d < closestDist && d < 15) { closestDist = d; closest = p; }
     }
     if (closest) {
       tooltip.style.display = 'block';
       tooltip.style.left = (e.clientX - rect.left + 12) + 'px';
-      tooltip.style.top = (e.clientY - rect.top - 10) + 'px';
-      tooltip.innerHTML = `<b>ID ${closest.id}</b><br>Label: ${closest.label === 1 ? 'BAS' : 'non-BAS'}<br>h_score: ${(closest.h_score || 0).toFixed(3)}<br>(${closest.x.toFixed(2)}, ${closest.y.toFixed(2)})`;
-    } else {
-      tooltip.style.display = 'none';
-    }
+      tooltip.style.top  = (e.clientY - rect.top  - 10) + 'px';
+      tooltip.innerHTML  = `<b>ID ${closest.id}</b><br>Label: ${closest.label === 1 ? 'BAS' : 'non-BAS'}<br>h_score: ${(closest.h_score || 0).toFixed(3)}<br>(${closest.x.toFixed(2)}, ${closest.y.toFixed(2)})`;
+    } else { tooltip.style.display = 'none'; }
   });
   scatterCanvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
 
   function updateMetrics(points) {
     const bas = points.filter(p => p.label === 1);
     const non = points.filter(p => p.label === 0);
+    if (!bas.length || !non.length) return;
+    const basCx = bas.reduce((s, p) => s + p.x, 0) / bas.length;
+    const basCy = bas.reduce((s, p) => s + p.y, 0) / bas.length;
+    const nonCx = non.reduce((s, p) => s + p.x, 0) / non.length;
+    const nonCy = non.reduce((s, p) => s + p.y, 0) / non.length;
+    document.getElementById('ks-cluster-dist').textContent =
+      Math.sqrt((basCx - nonCx) ** 2 + (basCy - nonCy) ** 2).toFixed(3);
 
-    if (bas.length && non.length) {
-      const basCx = bas.reduce((s, p) => s + p.x, 0) / bas.length;
-      const basCy = bas.reduce((s, p) => s + p.y, 0) / bas.length;
-      const nonCx = non.reduce((s, p) => s + p.x, 0) / non.length;
-      const nonCy = non.reduce((s, p) => s + p.y, 0) / non.length;
-      const cdist = Math.sqrt((basCx - nonCx) ** 2 + (basCy - nonCy) ** 2);
-      document.getElementById('ks-cluster-dist').textContent = cdist.toFixed(3);
-
-      const sil = computeSilhouette(points);
-      const silEl = document.getElementById('ks-silhouette');
-      let badgeColor = '#6e7681';
-      if (sil > 0.5) badgeColor = '#3fb950';
-      else if (sil < 0) badgeColor = '#f85149';
-      silEl.innerHTML = `<span class="sil-badge" style="background:${badgeColor};color:#fff">${sil.toFixed(3)}</span>`;
-    }
+    const sil = computeSilhouette(points);
+    const silEl = document.getElementById('ks-silhouette');
+    const badgeColor = sil > 0.5 ? '#3fb950' : sil < 0 ? '#f85149' : '#6e7681';
+    silEl.innerHTML = `<span class="sil-badge" style="background:${badgeColor};color:#fff">${sil.toFixed(3)}</span>`;
   }
 
   function computeSilhouette(points) {
     const n = points.length;
     if (n < 2) return 0;
-    const labels = [...new Set(points.map(p => p.label))];
-    if (labels.length < 2) return 0;
-
+    if ([...new Set(points.map(p => p.label))].length < 2) return 0;
     let totalSil = 0;
     for (let i = 0; i < n; i++) {
       const pi = points[i];
-      let sameSum = 0, sameCount = 0;
-      let otherSum = 0, otherCount = 0;
-
+      let sameSum = 0, sameCount = 0, otherSum = 0, otherCount = 0;
       for (let j = 0; j < n; j++) {
         if (i === j) continue;
         const pj = points[j];
-        const d = Math.sqrt((pi.x - pj.x) ** 2 + (pi.y - pj.y) ** 2);
+        const d  = Math.sqrt((pi.x - pj.x) ** 2 + (pi.y - pj.y) ** 2);
         if (pj.label === pi.label) { sameSum += d; sameCount++; }
-        else { otherSum += d; otherCount++; }
+        else                       { otherSum += d; otherCount++; }
       }
-
-      const a = sameCount > 0 ? sameSum / sameCount : 0;
+      const a = sameCount  > 0 ? sameSum  / sameCount  : 0;
       const b = otherCount > 0 ? otherSum / otherCount : 0;
-      const s = Math.max(a, b) > 0 ? (b - a) / Math.max(a, b) : 0;
-      totalSil += s;
+      totalSil += Math.max(a, b) > 0 ? (b - a) / Math.max(a, b) : 0;
     }
     return totalSil / n;
   }
 
-  // ── Metrics strip: full 200-step cost/accuracy/entropy curves ──
   function drawEpochStrip() {
     if (!activeStudy) return;
     const m = activeStudy.data.metrics;
-    if (!m || !m.costs) return;
+    if (!m || !m.costs || !m.costs.length) return;
 
     const strip = document.getElementById('ks-epoch-strip');
     const w = strip.clientWidth, h = strip.clientHeight;
@@ -1424,232 +1684,181 @@ requestAnimationFrame(animate);
 
     const pad = { l: 40, r: 16, t: 12, b: 18 };
     const gw = w - pad.l - pad.r, gh = h - pad.t - pad.b;
-    const numSteps = m.costs.length || 1;
+    const numSteps = m.costs.length;
 
-    // Axes
-    epochCtx.strokeStyle = 'rgba(88,166,255,0.2)';
-    epochCtx.lineWidth = 1;
+    epochCtx.strokeStyle = 'rgba(88,166,255,0.2)'; epochCtx.lineWidth = 1;
     epochCtx.beginPath();
     epochCtx.moveTo(pad.l, pad.t); epochCtx.lineTo(pad.l, pad.t + gh);
     epochCtx.lineTo(pad.l + gw, pad.t + gh); epochCtx.stroke();
 
-    const maxCost = Math.max(...m.costs, 0.01);
+    const maxCost    = Math.max(...m.costs, 0.01);
+    const allEnt     = [...(m.entropy_bas || []), ...(m.entropy_non_bas || [])];
+    const maxEntropy = allEnt.length > 0 ? Math.max(...allEnt, 0.01) : 1;
+    const stepX      = i => pad.l + (i / Math.max(numSteps - 1, 1)) * gw;
 
-    // Find max entropy for scaling
-    const allEntropy = [...(m.entropy_bas || []), ...(m.entropy_non_bas || [])];
-    const maxEntropy = allEntropy.length > 0 ? Math.max(...allEntropy, 0.01) : 1;
-
-    function stepX(i) { return pad.l + (i / Math.max(numSteps - 1, 1)) * gw; }
-
-    // Cost line (grey)
-    epochCtx.strokeStyle = 'rgba(139,148,158,0.6)';
-    epochCtx.lineWidth = 1.5;
-    epochCtx.beginPath();
-    m.costs.forEach((v, i) => {
-      const x = stepX(i), y = pad.t + gh - (v / maxCost) * gh;
-      i === 0 ? epochCtx.moveTo(x, y) : epochCtx.lineTo(x, y);
-    });
-    epochCtx.stroke();
-
-    // Accuracy line (orange)
-    if (m.accuracies && m.accuracies.length) {
-      epochCtx.strokeStyle = COL_BAS;
-      epochCtx.lineWidth = 1.5;
+    function drawLine(data, color, lw, scaleMax) {
+      if (!data || !data.length) return;
+      epochCtx.strokeStyle = color; epochCtx.lineWidth = lw;
       epochCtx.beginPath();
-      m.accuracies.forEach((v, i) => {
-        const x = stepX(i), y = pad.t + gh - v * gh;
+      data.forEach((v, i) => {
+        const x = stepX(i), y = pad.t + gh - (v / scaleMax) * gh;
         i === 0 ? epochCtx.moveTo(x, y) : epochCtx.lineTo(x, y);
       });
       epochCtx.stroke();
     }
+    drawLine(m.costs,       'rgba(139,148,158,0.6)', 1.5, maxCost);
+    drawLine(m.accuracies,  COL_BAS,                 1.5, 1);
+    drawLine(m.entropy_bas,     COL_ENTROPY_BAS, 1.2, maxEntropy);
+    drawLine(m.entropy_non_bas, COL_ENTROPY_NON, 1.2, maxEntropy);
 
-    // Entanglement entropy BAS (light purple)
-    if (m.entropy_bas && m.entropy_bas.length) {
-      epochCtx.strokeStyle = COL_ENTROPY_BAS;
-      epochCtx.lineWidth = 1.2;
-      epochCtx.beginPath();
-      m.entropy_bas.forEach((v, i) => {
-        const x = stepX(i), y = pad.t + gh - (v / maxEntropy) * gh;
-        i === 0 ? epochCtx.moveTo(x, y) : epochCtx.lineTo(x, y);
-      });
-      epochCtx.stroke();
-    }
-
-    // Entanglement entropy non-BAS (dark purple)
-    if (m.entropy_non_bas && m.entropy_non_bas.length) {
-      epochCtx.strokeStyle = COL_ENTROPY_NON;
-      epochCtx.lineWidth = 1.2;
-      epochCtx.beginPath();
-      m.entropy_non_bas.forEach((v, i) => {
-        const x = stepX(i), y = pad.t + gh - (v / maxEntropy) * gh;
-        i === 0 ? epochCtx.moveTo(x, y) : epochCtx.lineTo(x, y);
-      });
-      epochCtx.stroke();
-    }
-
-    // Vertical markers at snapshot steps (0, 100, 200)
     SNAPSHOT_STEPS.forEach((step, idx) => {
-      const x = stepX(step);
-      const isActive = idx === currentSnapIdx;
+      const x = stepX(Math.min(step, numSteps - 1));
+      const isActive = idx === currentSnapIdx && !activeStudy.data._no_umap;
       epochCtx.strokeStyle = isActive ? '#58a6ff' : 'rgba(88,166,255,0.4)';
-      epochCtx.lineWidth = isActive ? 2 : 1;
+      epochCtx.lineWidth   = isActive ? 2 : 1;
       epochCtx.setLineDash(isActive ? [] : [3, 3]);
-      epochCtx.beginPath();
-      epochCtx.moveTo(x, pad.t); epochCtx.lineTo(x, pad.t + gh);
-      epochCtx.stroke();
+      epochCtx.beginPath(); epochCtx.moveTo(x, pad.t); epochCtx.lineTo(x, pad.t + gh); epochCtx.stroke();
       epochCtx.setLineDash([]);
-
-      // Marker dot at bottom
       epochCtx.fillStyle = isActive ? '#58a6ff' : 'rgba(88,166,255,0.5)';
-      epochCtx.beginPath();
-      epochCtx.arc(x, pad.t + gh + 6, 4, 0, Math.PI * 2);
-      epochCtx.fill();
-
-      // Step label
+      epochCtx.beginPath(); epochCtx.arc(x, pad.t + gh + 6, 4, 0, Math.PI * 2); epochCtx.fill();
       epochCtx.fillStyle = isActive ? '#58a6ff' : '#6e7681';
-      epochCtx.font = '8px monospace';
-      epochCtx.textAlign = 'center';
+      epochCtx.font = '8px monospace'; epochCtx.textAlign = 'center';
       epochCtx.fillText(step.toString(), x, pad.t + gh + 16);
     });
 
-    // Legend
-    epochCtx.font = '9px monospace';
-    epochCtx.textAlign = 'left';
+    epochCtx.font = '9px monospace'; epochCtx.textAlign = 'left';
     let lx = pad.l + 2;
-    epochCtx.fillStyle = '#8b949e'; epochCtx.fillText('cost', lx, pad.t + 10); lx += 30;
-    epochCtx.fillStyle = COL_BAS; epochCtx.fillText('acc', lx, pad.t + 10); lx += 24;
+    epochCtx.fillStyle = '#8b949e';    epochCtx.fillText('cost',   lx, pad.t + 10); lx += 30;
+    epochCtx.fillStyle = COL_BAS;      epochCtx.fillText('acc',    lx, pad.t + 10); lx += 24;
     if (m.entropy_bas && m.entropy_bas.length) {
       epochCtx.fillStyle = COL_ENTROPY_BAS; epochCtx.fillText('S(BAS)', lx, pad.t + 10); lx += 42;
       epochCtx.fillStyle = COL_ENTROPY_NON; epochCtx.fillText('S(non)', lx, pad.t + 10);
     }
   }
 
-  // Click on epoch strip to snap to nearest snapshot marker
   document.getElementById('ks-epoch-strip').addEventListener('click', (e) => {
-    if (!activeStudy || !activeStudy.data.metrics) return;
+    if (!activeStudy || !activeStudy.data.metrics || activeStudy.data._no_umap) return;
     const strip = document.getElementById('ks-epoch-strip');
-    const rect = strip.getBoundingClientRect();
-    const padL = 40, padR = 16;
-    const gw = rect.width - padL - padR;
-    const numSteps = activeStudy.data.metrics.costs.length || 1;
-    const clickX = e.clientX - rect.left - padL;
-    const clickStep = Math.round((clickX / gw) * (numSteps - 1));
-
-    // Find nearest snapshot step
+    const rect  = strip.getBoundingClientRect();
+    const gw    = rect.width - 40 - 16;
+    const n     = activeStudy.data.metrics.costs.length || 1;
+    const step  = Math.round(((e.clientX - rect.left - 40) / gw) * (n - 1));
     let nearest = 0, nearestDist = Infinity;
-    SNAPSHOT_STEPS.forEach((step, idx) => {
-      const d = Math.abs(clickStep - step);
+    SNAPSHOT_STEPS.forEach((s, idx) => {
+      const d = Math.abs(step - s);
       if (d < nearestDist) { nearestDist = d; nearest = idx; }
     });
-
-    if (nearest < (activeStudy.data.snapshots || []).length) {
-      setSnapshot(nearest);
-    }
+    if (nearest < (activeStudy.data.snapshots || []).length) setSnapshot(nearest);
   });
 
-  // ── Reference States rendering ──
   function renderReferenceStates() {
     const refPanel = document.getElementById('ks-ref-panel');
-    const refData = activeStudy && activeStudy.data.reference_states;
+    const refData  = activeStudy && activeStudy.data.reference_states;
     if (!refData) { refPanel.style.display = 'none'; return; }
-
     refPanel.style.display = 'block';
-    renderRefBars('ks-ref-bas', refData.bas, COL_BAS);
+    renderRefBars('ks-ref-bas',     refData.bas,     COL_BAS);
     renderRefBars('ks-ref-non-bas', refData.not_bas, COL_NON);
   }
 
   function renderRefBars(containerId, stateData, color) {
     const container = document.getElementById(containerId);
     if (!container || !stateData) { if (container) container.innerHTML = ''; return; }
-
     let probs;
     if (stateData.probabilities) {
       probs = stateData.probabilities;
     } else {
-      const re = stateData.real || [];
-      const im = stateData.imag || [];
+      const re = stateData.real || [], im = stateData.imag || [];
       probs = re.map((r, i) => r * r + (im[i] || 0) * (im[i] || 0));
     }
     const maxProb = Math.max(...probs, 0.001);
-
     container.innerHTML = '';
     probs.forEach((p, i) => {
       const bar = document.createElement('div');
       bar.className = 'ref-bar';
-      bar.style.height = Math.round((p / maxProb) * 24) + 'px';
+      bar.style.height     = Math.round((p / maxProb) * 24) + 'px';
       bar.style.background = color;
-      bar.style.opacity = 0.3 + 0.7 * (p / maxProb);
+      bar.style.opacity    = 0.3 + 0.7 * (p / maxProb);
       bar.title = `|${i.toString(2).padStart(4, '0')}⟩: ${p.toFixed(4)}`;
       container.appendChild(bar);
     });
   }
 
   // ── Snapshot toggle buttons ──
-  snapBtns.forEach((btn) => {
+  snapBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       const idx = parseInt(btn.dataset.snap);
-      if (activeStudy && activeStudy.data.snapshots && idx < activeStudy.data.snapshots.length) {
+      if (activeStudy && !activeStudy.data._no_umap &&
+          activeStudy.data.snapshots && idx < activeStudy.data.snapshots.length) {
         setSnapshot(idx);
       }
     });
   });
 
-  // File loading
+  // ── Drop / file / folder events ──
   dropZone.addEventListener('click', () => fileInput.click());
-  dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('dragover'); });
   dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-  dropZone.addEventListener('drop', (e) => {
-    e.preventDefault(); dropZone.classList.remove('dragover');
-    handleFiles(e.dataTransfer.files);
+  dropZone.addEventListener('drop', async e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      for (const item of e.dataTransfer.items) {
+        const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+        if (entry) await handleDroppedEntry(entry, 0);
+        else if (item.kind === 'file') handleFiles([item.getAsFile()]);
+      }
+    } else {
+      handleFiles(e.dataTransfer.files);
+    }
   });
-  fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+
+  fileInput.addEventListener('change', () => { handleFiles(fileInput.files); fileInput.value = ''; });
+  folderInput.addEventListener('change', async () => {
+    if (folderInput.files.length > 0) await handleFolderInput(folderInput.files);
+    folderInput.value = '';
+  });
+  document.getElementById('ks-browse-folder-btn').addEventListener('click', e => {
+    e.stopPropagation();
+    folderInput.click();
+  });
 
   function handleFiles(files) {
-    for (const file of files) {
-      if (!file.name.endsWith('.json')) continue;
-      const loading = document.getElementById('ks-loading');
-      loading.style.display = 'block';
-      const fill = document.getElementById('ks-progress-fill');
-      fill.style.width = '30%';
-
-      const reader = new FileReader();
-      reader.onprogress = (e) => {
-        if (e.lengthComputable) fill.style.width = Math.round((e.loaded / e.total) * 90) + '%';
-      };
-      reader.onload = (e) => {
-        fill.style.width = '100%';
+    for (const file of (files || [])) {
+      if (!file || !file.name.endsWith('.json')) continue;
+      showLoadingBar(20);
+      readFileAsText(file).then(text => {
+        updateLoadingBar(90);
         try {
-          const data = JSON.parse(e.target.result);
-          loadStudy(data);
-          dropZone.classList.add('has-data');
-          dropZone.textContent = `Loaded: ${file.name}`;
-        } catch (err) {
-          alert('Failed to parse JSON: ' + err.message);
-        }
-        setTimeout(() => { loading.style.display = 'none'; }, 500);
-      };
-      reader.readAsText(file);
+          loadStudy(JSON.parse(text));
+          setDropZoneLoaded(`✓ ${file.name}`);
+        } catch (err) { alert('Failed to parse JSON: ' + err.message); }
+        hideLoadingBar();
+      }).catch(() => hideLoadingBar());
     }
   }
 
-  studySelect.addEventListener('change', () => selectStudy(parseInt(studySelect.value)));
+  // Copy command on click
+  document.getElementById('ks-no-umap-cmd-wrap').addEventListener('click', () => {
+    const cmdEl  = document.getElementById('ks-no-umap-cmd');
+    const hintEl = document.getElementById('ks-no-umap-copy-hint');
+    if (!cmdEl) return;
+    navigator.clipboard.writeText(cmdEl.textContent).then(() => {
+      if (hintEl) { hintEl.textContent = '✓ copied!'; setTimeout(() => { hintEl.textContent = 'click to copy command'; }, 2000); }
+    }).catch(() => {});
+  });
 
+  studySelect.addEventListener('change', () => selectStudy(parseInt(studySelect.value)));
   colorMode.addEventListener('change', drawScatter);
   document.getElementById('ks-show-threshold').addEventListener('change', drawScatter);
   document.getElementById('ks-threshold-val').addEventListener('input', drawScatter);
 
   window.addEventListener('resize', () => {
     if (document.getElementById('tab-kernel').classList.contains('active')) {
-      resizeCanvases();
-      drawScatter();
-      drawEpochStrip();
+      resizeCanvases(); drawScatter(); drawEpochStrip();
     }
   });
-
   window.addEventListener('ks-activated', () => {
-    resizeCanvases();
-    drawScatter();
-    drawEpochStrip();
+    resizeCanvases(); drawScatter(); drawEpochStrip();
   });
 
   function ksAnimLoop(now) {
