@@ -457,7 +457,7 @@
             <div class="ref-bar-wrap" id="ks-ref-bas"></div>
           </div>
           <div class="ref-state-row">
-            <span class="ref-state-label" style="color:#1f77b4">non-BAS</span>
+            <span class="ref-state-label" style="color:#1f77b4">not-BAS</span>
             <div class="ref-bar-wrap" id="ks-ref-non-bas"></div>
           </div>
           <div style="color:#6e7681; font-size:9px; margin-top:4px;">|amplitude|² per basis state</div>
@@ -1555,16 +1555,21 @@ requestAnimationFrame(animate);
 
     refPanel.style.display = 'block';
     renderRefBars('ks-ref-bas', refData.bas, COL_BAS);
-    renderRefBars('ks-ref-non-bas', refData.non_bas, COL_NON);
+    renderRefBars('ks-ref-non-bas', refData.not_bas, COL_NON);
   }
 
   function renderRefBars(containerId, stateData, color) {
     const container = document.getElementById(containerId);
     if (!container || !stateData) { if (container) container.innerHTML = ''; return; }
 
-    const re = stateData.real || [];
-    const im = stateData.imag || [];
-    const probs = re.map((r, i) => r * r + (im[i] || 0) * (im[i] || 0));
+    let probs;
+    if (stateData.probabilities) {
+      probs = stateData.probabilities;
+    } else {
+      const re = stateData.real || [];
+      const im = stateData.imag || [];
+      probs = re.map((r, i) => r * r + (im[i] || 0) * (im[i] || 0));
+    }
     const maxProb = Math.max(...probs, 0.001);
 
     container.innerHTML = '';

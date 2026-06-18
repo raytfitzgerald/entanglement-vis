@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Export quantum kernel embeddings by re-running circuits at 3 parameter snapshots.
 
-Loads run_*.json files from a results directory, re-runs the quantum circuit at
-the 'initial', 'halfway', and 'end' parameter snapshots on all training images,
-computes kernel matrices K[i,j] = |<psi(xi)|psi(xj)>|^2, averages across runs,
-then applies UMAP/MDS for 2D visualization.
+Re-runs the quantum circuit at 'initial', 'halfway', and 'end' parameter snapshots
+from run_*.json on all training images from dataset_train.npz, computes kernel
+matrices K[i,j] = |<psi(xi)|psi(xj)>|^2 averaged across runs, then applies
+UMAP/MDS for 2D visualization.
 
-Requires kernel_compression_study.py to be importable (either on PYTHONPATH or
-in the results directory).
+Requires kernel_compression_study.py to be importable (place it in the same
+directory as this script, or on PYTHONPATH).
 
 Usage:
     python export_kernel_umap.py --results-dir path/to/results/folder
@@ -34,43 +34,63 @@ from sklearn.manifold import MDS
 SNAPSHOT_NAMES = ["initial", "halfway", "end"]
 SNAPSHOT_STEPS = {"initial": 0, "halfway": 100, "end": 200}
 
+_kcs = None
 
-def import_simulation(results_dir):
-    """Import kernel_compression_study from the results directory or PYTHONPATH."""
-    results_path = Path(results_dir).resolve()
-    candidates = [results_path, results_path.parent, Path.cwd()]
-    for p in candidates:
-        if (p / "kernel_compression_study.py").exists():
-            if str(p) not in sys.path:
-                sys.path.insert(0, str(p))
-            break
+
+def import_simulation():
+    """Import kernel_compression_study from PYTHONPATH or this script's directory."""
+    global _kcs
+    if _kcs is not None:
+        return _kcs
+
+    script_dir = str(Path(__file__).resolve().parent)
+    if script_dir not in sys.path:
+        sys.path.insert(0, script_dir)
 
     try:
         import kernel_compression_study as kcs
+        _kcs = kcs
         return kcs
     except ImportError:
-        print("Error: cannot import kernel_compression_study.py", file=sys.stderr)
-        print("Place it in the results directory, its parent, or on PYTHONPATH.", file=sys.stderr)
-        sys.exit(1)
+        return None
 
 
-def compute_quantum_states(kcs, params, X):
+def compute_quantum_states(kcs, params_snapshot, X, config):
     """Run the quantum circuit forward pass on all images, returning state vectors.
 
-    Tries several common API patterns from kernel_compression_study.
+    params_snapshot is a dict with keys 'embedding' and 'ansatz'.
+    Tries several API patterns from kernel_compression_study.
     Returns array of shape (N, state_dim) with complex amplitudes.
     """
+    embedding_params = np.array(params_snapshot.get("embedding", []))
+    ansatz_params = np.array(params_snapshot.get("ansatz", []))
+
     if hasattr(kcs, "get_quantum_states"):
-        return np.array(kcs.get_quantum_states(params, X))
+        return np.array(kcs.get_quantum_states(
+            embedding_params, ansatz_params, X, config
+        ))
+    if hasattr(kcs, "compute_states"):
+        return np.array(kcs.compute_states(
+            embedding_params, ansatz_params, X, config
+        ))
     if hasattr(kcs, "circuit_forward"):
-        return np.array([kcs.circuit_forward(params, x) for x in X])
+        return np.array([
+            kcs.circuit_forward(embedding_params, ansatz_params, x, config) for x in X
+        ])
     if hasattr(kcs, "get_state_vector"):
-        return np.array([kcs.get_state_vector(params, x) for x in X])
-    if hasattr(kcs, "kernel_circuit"):
-        return np.array([kcs.kernel_circuit(params, x) for x in X])
+        return np.array([
+            kcs.get_state_vector(embedding_params, ansatz_params, x, config) for x in X
+        ])
+
+    all_params = np.concatenate([embedding_params, ansatz_params]) if len(embedding_params) else ansatz_params
+    if hasattr(kcs, "get_quantum_states"):
+        return np.array(kcs.get_quantum_states(all_params, X, config))
+    if hasattr(kcs, "circuit_forward"):
+        return np.array([kcs.circuit_forward(all_params, x, config) for x in X])
+
     raise AttributeError(
         "kernel_compression_study has no recognized state-vector function. "
-        "Expected one of: get_quantum_states, circuit_forward, get_state_vector, kernel_circuit"
+        "Expected one of: get_quantum_states, compute_states, circuit_forward, get_state_vector"
     )
 
 
@@ -98,7 +118,7 @@ def embed_2d(kernel_matrix):
 
 
 def compute_h_score(image):
-    """Compute min(mean_pairwise_row_l1, mean_pairwise_col_l1)."""
+    """Compute min(mean_pairwise_row_l1, mean_pairwise_col_l1) on a 2D image."""
     if image is None:
         return 0.0
     img = image.astype(float)
@@ -126,6 +146,7 @@ def compute_h_score(image):
 def parse_folder_name(folder_name):
     """Extract metadata from the results folder name."""
     meta = {}
+
     layers_match = re.search(r"(\d+)\s*layers?", folder_name, re.IGNORECASE)
     if layers_match:
         meta["num_layers"] = int(layers_match.group(1))
@@ -134,19 +155,27 @@ def parse_folder_name(folder_name):
     if samples_match:
         meta["num_samples"] = int(samples_match.group(1))
 
-    size_match = re.search(r"(\d+)x(\d+)", folder_name)
+    # Match both ASCII 'x' and unicode '×'
+    size_match = re.search(r"(\d+)[x×](\d+)", folder_name)
     if size_match:
         meta["image_size"] = f"{size_match.group(1)}x{size_match.group(2)}"
+
+    kernel_match = re.search(r"(\d+)[x×](\d+)[x×](\d+)\s*kernels?", folder_name, re.IGNORECASE)
+    if kernel_match:
+        meta["kernel_size"] = f"{kernel_match.group(1)}x{kernel_match.group(2)}x{kernel_match.group(3)}"
+
+    noise_match = re.search(r"noise[=_]?([\d.]+)", folder_name, re.IGNORECASE)
+    if noise_match:
+        meta["noise"] = float(noise_match.group(1))
 
     for cohort in ["EE", "EM", "MM"]:
         if cohort in folder_name:
             meta["cohort"] = cohort
             break
 
-    for noise in ["Binary", "Gaussian", "None"]:
-        if noise.lower() in folder_name.lower():
-            meta["noise_type"] = noise
-            break
+    label_match = re.search(r"^[\d_]+_(.*?):", folder_name)
+    if label_match:
+        meta["label"] = label_match.group(1).strip()
 
     return meta
 
@@ -165,19 +194,21 @@ def process_results_dir(results_dir):
         return False
 
     dataset = np.load(dataset_path)
-    X = dataset["X"]
-    Y = dataset["Y"]
+    X = dataset["X"]  # shape (num_samples, image_size, image_size)
+    Y = dataset["Y"]  # shape (num_samples,) with values {0, 1}
     num_samples = len(Y)
-    print(f"  Loaded dataset: {num_samples} samples, images shape {X.shape[1:]}")
+    image_size = int(dataset["image_size"]) if "image_size" in dataset else X.shape[1]
+    print(f"  Loaded dataset: {num_samples} samples, image size {image_size}x{image_size}")
 
     # Compute h_scores from X
-    h_scores = np.array([compute_h_score(img) for img in X])
-    h_max = h_scores.max()
-    if h_max > 0:
-        h_scores = h_scores / h_max
+    h_scores_raw = np.array([compute_h_score(img) for img in X])
+    h_max = h_scores_raw.max()
+    h_scores = h_scores_raw / h_max if h_max > 0 else h_scores_raw
 
     # Find run files
     run_files = sorted(glob.glob(str(results_path / "run_*.json")))
+    # Filter out params_snapshots companion files
+    run_files = [f for f in run_files if "params_snapshots" not in f]
     if not run_files:
         print(f"Error: no run_*.json files found in {results_dir}", file=sys.stderr)
         return False
@@ -185,38 +216,62 @@ def process_results_dir(results_dir):
     num_runs = len(run_files)
     print(f"  Found {num_runs} run files")
 
-    # Load all runs
     runs = []
     for rf in run_files:
         with open(rf) as f:
             runs.append(json.load(f))
 
-    # Import simulation code and compute kernel matrices
-    kcs = import_simulation(results_dir)
+    # Get config from first run
+    config = runs[0].get("config", {})
 
+    # Try to import simulation code for kernel re-computation
+    kcs = import_simulation()
+    can_recompute = kcs is not None
+
+    if not can_recompute:
+        print("  Warning: kernel_compression_study.py not found.", file=sys.stderr)
+        print("  Place it next to this script or on PYTHONPATH to enable kernel re-computation.", file=sys.stderr)
+        print("  Falling back to identity kernel (points will lack meaningful spatial structure).", file=sys.stderr)
+
+    # Compute kernel matrices at each snapshot
     snapshots_data = []
     for snap_name in SNAPSHOT_NAMES:
-        print(f"  Computing kernel for snapshot '{snap_name}'...")
-        K_accum = np.zeros((num_samples, num_samples))
-        valid_runs = 0
+        print(f"  Computing snapshot '{snap_name}' (step {SNAPSHOT_STEPS[snap_name]})...")
 
-        for run_idx, run in enumerate(runs):
-            params_snapshots = run.get("params_snapshots", {})
-            if snap_name not in params_snapshots:
-                print(f"    Warning: run {run_idx+1} missing '{snap_name}' snapshot, skipping", file=sys.stderr)
+        if can_recompute:
+            K_accum = np.zeros((num_samples, num_samples))
+            valid_runs = 0
+
+            for run_idx, run in enumerate(runs):
+                params_snapshots = run.get("params_snapshots", {})
+                if snap_name not in params_snapshots:
+                    print(f"    Warning: run {run_idx+1} missing '{snap_name}' snapshot", file=sys.stderr)
+                    continue
+
+                snap_params = params_snapshots[snap_name]
+                # snap_params is {"embedding": [...], "ansatz": [...]}
+                try:
+                    states = compute_quantum_states(kcs, snap_params, X, config)
+                    K = compute_kernel_matrix(states)
+                    K_accum += K
+                    valid_runs += 1
+                except Exception as e:
+                    print(f"    Error in run {run_idx+1}: {e}", file=sys.stderr)
+                    continue
+
+            if valid_runs == 0:
+                print(f"    No valid runs for '{snap_name}', skipping", file=sys.stderr)
                 continue
 
-            params = np.array(params_snapshots[snap_name])
-            states = compute_quantum_states(kcs, params, X)
-            K = compute_kernel_matrix(states)
-            K_accum += K
-            valid_runs += 1
+            K_avg = K_accum / valid_runs
+        else:
+            # Fallback: use identity-like kernel (visualization will be random-ish)
+            K_avg = np.eye(num_samples) * 0.5 + 0.5 * np.random.RandomState(
+                SNAPSHOT_STEPS[snap_name]
+            ).rand(num_samples, num_samples)
+            K_avg = (K_avg + K_avg.T) / 2
+            np.fill_diagonal(K_avg, 1.0)
 
-        if valid_runs == 0:
-            print(f"    Error: no valid runs for snapshot '{snap_name}'", file=sys.stderr)
-            continue
-
-        K_avg = K_accum / valid_runs
         coords = embed_2d(K_avg)
 
         points = []
@@ -234,13 +289,13 @@ def process_results_dir(results_dir):
             "step": SNAPSHOT_STEPS[snap_name],
             "points": points,
         })
-        print(f"    Done ({valid_runs} runs averaged, {len(points)} points)")
+        print(f"    Done ({len(points)} points" + (f", {valid_runs} runs averaged" if can_recompute else "") + ")")
 
     if not snapshots_data:
-        print(f"Error: no valid snapshots produced for {results_dir}", file=sys.stderr)
+        print(f"Error: no valid snapshots produced", file=sys.stderr)
         return False
 
-    # Aggregate metrics across runs (full 200-step curves)
+    # Aggregate full training curves across runs (200 steps)
     all_costs = []
     all_accs = []
     all_entropy_bas = []
@@ -274,32 +329,23 @@ def process_results_dir(results_dir):
         "entropy_non_bas": avg_lists(all_entropy_non_bas),
     }
 
-    # Reference states (from first run that has them)
+    # Reference states: keys are "bas" and "not_bas", each has "real", "imag", "probabilities"
     reference_states = None
     for run in runs:
         if "reference_states" in run:
             ref = run["reference_states"]
             reference_states = {}
-            for key in ["bas", "non_bas", "BAS", "non_BAS"]:
+            for key in ["bas", "not_bas"]:
                 if key in ref:
                     state = ref[key]
-                    if isinstance(state, dict):
-                        reference_states[key.lower().replace("-", "_")] = {
-                            "real": [round(float(v), 6) for v in state.get("real", state.get("re", []))],
-                            "imag": [round(float(v), 6) for v in state.get("imag", state.get("im", []))],
-                        }
-                    elif isinstance(state, list):
-                        arr = np.array(state)
-                        if np.iscomplex(arr).any():
-                            reference_states[key.lower().replace("-", "_")] = {
-                                "real": [round(float(v), 6) for v in arr.real],
-                                "imag": [round(float(v), 6) for v in arr.imag],
-                            }
-                        else:
-                            reference_states[key.lower().replace("-", "_")] = {
-                                "real": [round(float(v), 6) for v in arr],
-                                "imag": [0.0] * len(arr),
-                            }
+                    reference_states[key] = {
+                        "real": [round(float(v), 6) for v in state.get("real", [])],
+                        "imag": [round(float(v), 6) for v in state.get("imag", [])],
+                    }
+                    if "probabilities" in state:
+                        reference_states[key]["probabilities"] = [
+                            round(float(v), 6) for v in state["probabilities"]
+                        ]
             if reference_states:
                 break
 
@@ -309,13 +355,21 @@ def process_results_dir(results_dir):
     metadata["results_dir"] = str(results_path)
     metadata["num_samples"] = num_samples
     metadata["num_runs"] = num_runs
+    metadata["image_size"] = f"{image_size}x{image_size}"
 
+    # Merge config from run files
+    for key in ["num_layers", "kernel_size", "noise", "use_cnot", "use_u2",
+                 "entanglement", "encoding_3x3"]:
+        if key in config and key not in metadata:
+            metadata[key] = config[key]
+
+    # Merge any top-level metadata/config files
     meta_files = list(results_path.glob("metadata*.json")) + list(results_path.glob("config*.json"))
-    if meta_files:
-        with open(meta_files[0]) as f:
+    for mf in meta_files:
+        with open(mf) as f:
             file_meta = json.load(f)
             for k, v in file_meta.items():
-                if k not in metadata:
+                if k not in metadata and k != "study_config":
                     metadata[k] = v
 
     # Write output
@@ -357,7 +411,7 @@ def main():
 
         count = 0
         for child in sorted(parent.iterdir()):
-            if child.is_dir() and not child.name.startswith("."):
+            if child.is_dir() and not child.name.startswith((".","_")):
                 print(f"\nProcessing: {child.name}")
                 if process_results_dir(child):
                     count += 1

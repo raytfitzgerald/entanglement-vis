@@ -115,10 +115,10 @@ pip install numpy scikit-learn umap-learn  # umap-learn is optional, falls back 
 python scripts/export_kernel_umap.py --results-dir path/to/results/folder
 ```
 
-The script expects:
-- `dataset_train.npz` with arrays `X` (images) and `Y` (labels)
-- `run_001.json` through `run_005.json` with `params_snapshots` (`initial`, `halfway`, `end`), `costs`, `accuracies`, `entanglement_entropy_history_bas`, `entanglement_entropy_history_not_bas`, and optionally `reference_states`
-- `kernel_compression_study.py` importable from the results directory (or on PYTHONPATH)
+The script expects a results folder containing:
+- `dataset_train.npz` — arrays `X` shape `(N, image_size, image_size)`, `Y` shape `(N,)` with `{0, 1}` labels, and `image_size` scalar
+- `run_001.json` through `run_005.json` — each with `params_snapshots` (dict of `initial`/`halfway`/`end`, each `{"embedding": [...], "ansatz": [...]}`), `costs`, `accuracies`, `entanglement_entropy_history_bas`, `entanglement_entropy_history_not_bas`, and optionally `reference_states` (`{"bas": {"real":[], "imag":[], "probabilities":[]}, "not_bas": {...}}`)
+- `kernel_compression_study.py` — place next to this script or on PYTHONPATH (required for kernel re-computation; without it, the script falls back to a placeholder kernel)
 
 To process all result folders under a parent directory at once:
 
@@ -177,8 +177,8 @@ Open the site, click the **Kernel Space** tab, and either drag-and-drop your `ke
     "entropy_non_bas": [...]
   },
   "reference_states": {
-    "bas": {"real": [...], "imag": [...]},
-    "non_bas": {"real": [...], "imag": [...]}
+    "bas": {"real": [...], "imag": [...], "probabilities": [...]},
+    "not_bas": {"real": [...], "imag": [...], "probabilities": [...]}
   }
 }
 ```
