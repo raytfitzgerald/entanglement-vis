@@ -104,7 +104,7 @@ For those interested in the details:
 
 ## Tab 2: Kernel Space
 
-The second tab visualizes how quantum kernel states cluster during training. It shows a 2D scatter plot of UMAP-embedded kernel matrix entries, animated across training epochs.
+The second tab visualizes how quantum kernel states cluster during training. The export script re-runs the quantum circuit at 3 saved parameter snapshots (initial, halfway, end), computes kernel matrices `K[i,j] = |⟨ψ(xᵢ)|ψ(xⱼ)⟩|²` averaged across 5 runs, then applies UMAP/MDS to produce a 2D scatter plot.
 
 ### Two-Step Workflow
 
@@ -115,7 +115,12 @@ pip install numpy scikit-learn umap-learn  # umap-learn is optional, falls back 
 python scripts/export_kernel_umap.py --results-dir path/to/results/folder
 ```
 
-This reads quantum kernel matrices from checkpoint directories and exports a `kernel_umap.json` file. To process all result folders under a parent directory at once:
+The script expects:
+- `dataset_train.npz` with arrays `X` (images) and `Y` (labels)
+- `run_001.json` through `run_005.json` with `params_snapshots` (`initial`, `halfway`, `end`), `costs`, `accuracies`, `entanglement_entropy_history_bas`, `entanglement_entropy_history_not_bas`, and optionally `reference_states`
+- `kernel_compression_study.py` importable from the results directory (or on PYTHONPATH)
+
+To process all result folders under a parent directory at once:
 
 ```bash
 python scripts/export_kernel_umap.py --batch path/to/parent/folder
@@ -131,17 +136,17 @@ Open the site, click the **Kernel Space** tab, and either drag-and-drop your `ke
 |---------|-------------|
 | **Load data** | Drag-and-drop or file picker for `kernel_umap.json` |
 | **Study selector** | Switch between multiple loaded studies |
-| **Epoch slider** | Scrub through training epochs with step/cost/accuracy readouts |
-| **Play / Pause** | Auto-advance through epochs (configurable 1–10 fps) |
+| **Snapshot toggle** | 3-position selector: Initial (step 0), Halfway (step 100), End (step 200) |
 | **Color mode** | Color points by label (BAS=orange, non-BAS=blue) or by h_score (viridis colormap) |
 | **H-score threshold** | Show a threshold indicator on the scatter plot |
 | **Overlay mode** | Plot two studies in the same scatter space (Procrustes alignment) |
 
-### Metrics
+### Metrics & Panels
 
 - **Cluster distance**: Euclidean distance between BAS and non-BAS centroids in UMAP space
 - **Silhouette score**: Cluster quality measure (−1 to 1), shown as a colored badge
-- **Epoch strip**: Bottom line chart showing accuracy and cost vs epoch; click to jump
+- **Metrics strip** (bottom): Full 200-step cost, accuracy, and entanglement entropy curves averaged across runs. Vertical markers at steps 0, 100, 200 mark the 3 snapshots — click a marker to jump. Entanglement entropy is shown as two purple lines (BAS vs non-BAS) diverging over training.
+- **Reference states** (bottom-left): When available, shows |amplitude|² per basis state for the reference BAS and non-BAS 4-qubit states as bar charts.
 
 ### Expected JSON Format
 
@@ -152,18 +157,29 @@ Open the site, click the **Kernel Space** tab, and either drag-and-drop your `ke
     "num_layers": 5,
     "image_size": "10x10"
   },
-  "epochs": [
+  "snapshots": [
     {
-      "epoch": 0,
+      "name": "initial",
       "step": 0,
-      "cost": 0.693,
-      "accuracy": 0.51,
       "points": [
         {"id": 0, "x": 1.23, "y": -0.45, "label": 1, "h_score": 0.0},
         ...
       ]
-    }
-  ]
+    },
+    {"name": "halfway", "step": 100, "points": [...]},
+    {"name": "end", "step": 200, "points": [...]}
+  ],
+  "metrics": {
+    "steps": [0, 1, ..., 199],
+    "costs": [...],
+    "accuracies": [...],
+    "entropy_bas": [...],
+    "entropy_non_bas": [...]
+  },
+  "reference_states": {
+    "bas": {"real": [...], "imag": [...]},
+    "non_bas": {"real": [...], "imag": [...]}
+  }
 }
 ```
 

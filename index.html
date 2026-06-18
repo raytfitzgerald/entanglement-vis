@@ -142,7 +142,6 @@
     border: 1px solid rgba(88,166,255,0.2); border-radius: 5px; padding: 5px 8px;
     font-family: inherit; font-size: 11px;
   }
-  .ks-group input[type=range] { width: 100%; accent-color: #58a6ff; }
   .ks-group .ks-readout { font-size: 11px; color: #8b949e; margin-top: 2px; }
   .ks-btn {
     background: rgba(88,166,255,0.15); color: #e6edf3; border: 1px solid rgba(88,166,255,0.3);
@@ -152,6 +151,22 @@
   .ks-btn:hover { background: rgba(88,166,255,0.3); }
   .ks-checkbox { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #8b949e; cursor: pointer; }
   .ks-checkbox input { accent-color: #58a6ff; }
+
+  /* Snapshot toggle buttons */
+  .ks-snap-group { display: flex; gap: 0; margin-top: 6px; }
+  .ks-snap-btn {
+    flex: 1; background: rgba(88,166,255,0.08); color: #8b949e;
+    border: 1px solid rgba(88,166,255,0.2); padding: 6px 4px;
+    font-family: inherit; font-size: 11px; cursor: pointer; transition: all 0.15s;
+  }
+  .ks-snap-btn:first-child { border-radius: 5px 0 0 5px; }
+  .ks-snap-btn:last-child { border-radius: 0 5px 5px 0; }
+  .ks-snap-btn:not(:first-child) { border-left: none; }
+  .ks-snap-btn.active {
+    background: rgba(88,166,255,0.3); color: #e6edf3; font-weight: 600;
+    border-color: #58a6ff;
+  }
+  .ks-snap-btn:hover:not(.active) { background: rgba(88,166,255,0.15); color: #e6edf3; }
 
   #ks-drop-zone {
     border: 2px dashed rgba(88,166,255,0.3); border-radius: 8px; padding: 20px;
@@ -205,9 +220,25 @@
   }
   #ks-empty .hint { font-size: 11px; color: #484f58; }
 
+  /* ── Reference States Panel ── */
+  #ks-ref-panel {
+    position: absolute; bottom: 12px; left: 12px; z-index: 50;
+    background: rgba(13,17,23,0.88); border: 1px solid rgba(88,166,255,0.2);
+    border-radius: 8px; padding: 10px 14px; font-size: 10px;
+    backdrop-filter: blur(12px); display: none;
+  }
+  #ks-ref-panel h3 { font-size: 11px; color: #58a6ff; margin-bottom: 6px; font-weight: 600; }
+  .ref-state-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .ref-state-label { color: #8b949e; width: 55px; }
+  .ref-bar-wrap { display: flex; gap: 1px; align-items: end; height: 24px; }
+  .ref-bar {
+    width: 6px; border-radius: 1px 1px 0 0; min-height: 1px;
+    transition: height 0.3s;
+  }
+
   /* ── Epoch Metrics Strip ── */
   #ks-epoch-strip {
-    height: 80px; background: rgba(13,17,23,0.92);
+    height: 100px; background: rgba(13,17,23,0.92);
     border-top: 1px solid rgba(88,166,255,0.15); position: relative; cursor: pointer;
   }
   #ks-epoch-canvas { width: 100%; height: 100%; }
@@ -362,21 +393,14 @@
       </div>
 
       <div class="ks-group">
-        <label>Epoch <span id="ks-epoch-label">—</span></label>
-        <input type="range" id="ks-epoch-slider" min="0" max="0" value="0" disabled>
-        <div class="ks-readout">
-          Step <span id="ks-step-val">—</span> &nbsp;|&nbsp;
-          Cost <span id="ks-cost-val">—</span> &nbsp;|&nbsp;
-          Acc <span id="ks-acc-val">—</span>
+        <label>Snapshot</label>
+        <div class="ks-snap-group">
+          <button class="ks-snap-btn active" data-snap="0">Initial</button>
+          <button class="ks-snap-btn" data-snap="1">Halfway</button>
+          <button class="ks-snap-btn" data-snap="2">End</button>
         </div>
-        <div style="display:flex; gap:6px; margin-top:6px;">
-          <button class="ks-btn" id="ks-play-btn" disabled style="flex:1">▶ Play</button>
-          <select id="ks-fps-select" style="width:70px; background:rgba(88,166,255,0.08); color:#e6edf3; border:1px solid rgba(88,166,255,0.2); border-radius:5px; font-family:inherit; font-size:11px; padding:4px;">
-            <option value="1">1 fps</option>
-            <option value="3" selected>3 fps</option>
-            <option value="5">5 fps</option>
-            <option value="10">10 fps</option>
-          </select>
+        <div class="ks-readout" style="margin-top:6px;">
+          Step <span id="ks-step-val">—</span>
         </div>
       </div>
 
@@ -425,6 +449,18 @@
             <span class="metric-label">Silhouette</span>
             <span id="ks-silhouette">—</span>
           </div>
+        </div>
+        <div id="ks-ref-panel">
+          <h3>Reference States (4-qubit)</h3>
+          <div class="ref-state-row">
+            <span class="ref-state-label" style="color:#ff7f0e">BAS</span>
+            <div class="ref-bar-wrap" id="ks-ref-bas"></div>
+          </div>
+          <div class="ref-state-row">
+            <span class="ref-state-label" style="color:#1f77b4">non-BAS</span>
+            <div class="ref-bar-wrap" id="ks-ref-non-bas"></div>
+          </div>
+          <div style="color:#6e7681; font-size:9px; margin-top:4px;">|amplitude|² per basis state</div>
         </div>
       </div>
       <div id="ks-epoch-strip" style="display:none">
@@ -1069,15 +1105,17 @@ requestAnimationFrame(animate);
 (function() {
   const COL_BAS = '#ff7f0e';
   const COL_NON = '#1f77b4';
+  const COL_ENTROPY_BAS = '#b388ff';
+  const COL_ENTROPY_NON = '#7c4dff';
+  const SNAPSHOT_STEPS = [0, 100, 200];
 
   let studies = [];
   let activeStudy = null;
-  let currentEpochIdx = 0;
-  let ksPlaying = false;
-  let playInterval = null;
+  let currentSnapIdx = 0;
 
   let displayPoints = [];
   let targetPoints = [];
+  let prevPoints = [];
   let animating = false;
   let animStart = 0;
   const ANIM_DUR = 250;
@@ -1085,8 +1123,7 @@ requestAnimationFrame(animate);
   const dropZone = document.getElementById('ks-drop-zone');
   const fileInput = document.getElementById('ks-file-input');
   const studySelect = document.getElementById('ks-study-select');
-  const epochSlider = document.getElementById('ks-epoch-slider');
-  const playBtn = document.getElementById('ks-play-btn');
+  const snapBtns = document.querySelectorAll('.ks-snap-btn');
   const colorMode = document.getElementById('ks-color-mode');
   const scatterCanvas = document.getElementById('ks-scatter-canvas');
   const scatterCtx = scatterCanvas.getContext('2d');
@@ -1136,13 +1173,14 @@ requestAnimationFrame(animate);
   function selectStudy(idx) {
     activeStudy = studies[idx];
     if (!activeStudy) return;
-    const epochs = activeStudy.data.epochs;
-    epochSlider.max = epochs.length - 1;
-    epochSlider.value = 0;
-    epochSlider.disabled = false;
-    playBtn.disabled = false;
-    currentEpochIdx = 0;
-    setEpoch(0, false);
+    currentSnapIdx = 0;
+    updateSnapButtons(0);
+    setSnapshot(0, false);
+    renderReferenceStates();
+  }
+
+  function updateSnapButtons(idx) {
+    snapBtns.forEach((btn, i) => btn.classList.toggle('active', i === idx));
   }
 
   function showScatter() {
@@ -1170,32 +1208,31 @@ requestAnimationFrame(animate);
     epochCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
-  function setEpoch(idx, animate = true) {
+  function setSnapshot(idx, animate = true) {
     if (!activeStudy) return;
-    const epochs = activeStudy.data.epochs;
-    idx = Math.max(0, Math.min(idx, epochs.length - 1));
-    currentEpochIdx = idx;
-    const ep = epochs[idx];
-    document.getElementById('ks-epoch-label').textContent = `${ep.epoch}`;
-    document.getElementById('ks-step-val').textContent = ep.step;
-    document.getElementById('ks-cost-val').textContent = typeof ep.cost === 'number' ? ep.cost.toFixed(3) : '—';
-    document.getElementById('ks-acc-val').textContent = typeof ep.accuracy === 'number' ? (ep.accuracy * 100).toFixed(1) + '%' : '—';
-    epochSlider.value = idx;
+    const snaps = activeStudy.data.snapshots;
+    if (!snaps || idx >= snaps.length) return;
+    currentSnapIdx = idx;
+    const snap = snaps[idx];
+    document.getElementById('ks-step-val').textContent = snap.step;
+    updateSnapButtons(idx);
 
-    const newTargets = ep.points.map(p => ({ ...p }));
+    const newTargets = snap.points.map(p => ({ ...p }));
 
     if (animate && displayPoints.length === newTargets.length) {
+      prevPoints = displayPoints.map(p => ({ ...p }));
       targetPoints = newTargets;
       animStart = performance.now();
       animating = true;
     } else {
       displayPoints = newTargets;
       targetPoints = newTargets;
+      prevPoints = newTargets.map(p => ({ ...p }));
       animating = false;
       drawScatter();
     }
 
-    updateMetrics(ep.points);
+    updateMetrics(snap.points);
     drawEpochStrip();
   }
 
@@ -1208,8 +1245,8 @@ requestAnimationFrame(animate);
     t = t * t * (3 - 2 * t);
 
     for (let i = 0; i < displayPoints.length; i++) {
-      displayPoints[i].x = lerp(displayPoints[i].x, targetPoints[i].x, t);
-      displayPoints[i].y = lerp(displayPoints[i].y, targetPoints[i].y, t);
+      displayPoints[i].x = lerp(prevPoints[i].x, targetPoints[i].x, t);
+      displayPoints[i].y = lerp(prevPoints[i].y, targetPoints[i].y, t);
       displayPoints[i].label = targetPoints[i].label;
       displayPoints[i].h_score = targetPoints[i].h_score;
       displayPoints[i].id = targetPoints[i].id;
@@ -1220,13 +1257,15 @@ requestAnimationFrame(animate);
   }
 
   function getScatterBounds() {
-    if (!displayPoints.length) return { xMin: -1, xMax: 1, yMin: -1, yMax: 1 };
+    if (!activeStudy || !activeStudy.data.snapshots) return { xMin: -1, xMax: 1, yMin: -1, yMax: 1 };
     let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
-    for (const p of displayPoints) {
-      if (p.x < xMin) xMin = p.x;
-      if (p.x > xMax) xMax = p.x;
-      if (p.y < yMin) yMin = p.y;
-      if (p.y > yMax) yMax = p.y;
+    for (const snap of activeStudy.data.snapshots) {
+      for (const p of snap.points) {
+        if (p.x < xMin) xMin = p.x;
+        if (p.x > xMax) xMax = p.x;
+        if (p.y < yMin) yMin = p.y;
+        if (p.y > yMax) yMax = p.y;
+      }
     }
     const padX = (xMax - xMin) * 0.1 || 1;
     const padY = (yMax - yMin) * 0.1 || 1;
@@ -1245,7 +1284,6 @@ requestAnimationFrame(animate);
     const sx = (x) => pad + ((x - bounds.xMin) / (bounds.xMax - bounds.xMin)) * (w - 2 * pad);
     const sy = (y) => h - pad - ((y - bounds.yMin) / (bounds.yMax - bounds.yMin)) * (h - 2 * pad);
 
-    // Grid
     scatterCtx.strokeStyle = 'rgba(88,166,255,0.08)';
     scatterCtx.lineWidth = 1;
     for (let i = 0; i <= 4; i++) {
@@ -1257,21 +1295,14 @@ requestAnimationFrame(animate);
 
     const mode = colorMode.value;
 
-    // h_score threshold
     if (document.getElementById('ks-show-threshold').checked && mode === 'h_score') {
       const thresh = parseFloat(document.getElementById('ks-threshold-val').value) || 0.15;
-      scatterCtx.strokeStyle = 'rgba(255,68,102,0.5)';
-      scatterCtx.lineWidth = 1;
-      scatterCtx.setLineDash([4, 4]);
-      // Draw threshold as colored band hint text
       scatterCtx.fillStyle = 'rgba(255,68,102,0.6)';
       scatterCtx.font = '10px monospace';
       scatterCtx.textAlign = 'left';
       scatterCtx.fillText(`h_score threshold = ${thresh.toFixed(2)}`, pad + 4, pad - 6);
-      scatterCtx.setLineDash([]);
     }
 
-    // Points
     for (const p of displayPoints) {
       const px = sx(p.x), py = sy(p.y);
       let col;
@@ -1288,7 +1319,6 @@ requestAnimationFrame(animate);
     }
     scatterCtx.globalAlpha = 1;
 
-    // Axis labels
     scatterCtx.fillStyle = '#6e7681';
     scatterCtx.font = '10px monospace';
     scatterCtx.textAlign = 'center';
@@ -1298,9 +1328,15 @@ requestAnimationFrame(animate);
     scatterCtx.rotate(-Math.PI / 2);
     scatterCtx.fillText('UMAP 2', 0, 0);
     scatterCtx.restore();
+
+    // Snapshot label
+    const snapNames = ['Initial', 'Halfway', 'End'];
+    scatterCtx.fillStyle = '#58a6ff';
+    scatterCtx.font = 'bold 12px monospace';
+    scatterCtx.textAlign = 'left';
+    scatterCtx.fillText(snapNames[currentSnapIdx] || '', pad + 4, pad + 16);
   }
 
-  // Hover tooltip
   scatterCanvas.addEventListener('mousemove', (e) => {
     if (!displayPoints.length) return;
     const rect = scatterCanvas.getBoundingClientRect();
@@ -1376,15 +1412,19 @@ requestAnimationFrame(animate);
     return totalSil / n;
   }
 
+  // ── Metrics strip: full 200-step cost/accuracy/entropy curves ──
   function drawEpochStrip() {
     if (!activeStudy) return;
-    const epochs = activeStudy.data.epochs;
+    const m = activeStudy.data.metrics;
+    if (!m || !m.costs) return;
+
     const strip = document.getElementById('ks-epoch-strip');
     const w = strip.clientWidth, h = strip.clientHeight;
     epochCtx.clearRect(0, 0, w, h);
 
-    const pad = { l: 40, r: 16, t: 10, b: 16 };
+    const pad = { l: 40, r: 16, t: 12, b: 18 };
     const gw = w - pad.l - pad.r, gh = h - pad.t - pad.b;
+    const numSteps = m.costs.length || 1;
 
     // Axes
     epochCtx.strokeStyle = 'rgba(88,166,255,0.2)';
@@ -1393,60 +1433,160 @@ requestAnimationFrame(animate);
     epochCtx.moveTo(pad.l, pad.t); epochCtx.lineTo(pad.l, pad.t + gh);
     epochCtx.lineTo(pad.l + gw, pad.t + gh); epochCtx.stroke();
 
-    const costs = epochs.map(e => e.cost || 0);
-    const accs = epochs.map(e => e.accuracy || 0);
-    const maxCost = Math.max(...costs, 0.01);
+    const maxCost = Math.max(...m.costs, 0.01);
+
+    // Find max entropy for scaling
+    const allEntropy = [...(m.entropy_bas || []), ...(m.entropy_non_bas || [])];
+    const maxEntropy = allEntropy.length > 0 ? Math.max(...allEntropy, 0.01) : 1;
+
+    function stepX(i) { return pad.l + (i / Math.max(numSteps - 1, 1)) * gw; }
 
     // Cost line (grey)
-    epochCtx.strokeStyle = 'rgba(139,148,158,0.7)';
+    epochCtx.strokeStyle = 'rgba(139,148,158,0.6)';
     epochCtx.lineWidth = 1.5;
     epochCtx.beginPath();
-    epochs.forEach((ep, i) => {
-      const x = pad.l + (i / Math.max(epochs.length - 1, 1)) * gw;
-      const y = pad.t + gh - ((ep.cost || 0) / maxCost) * gh;
+    m.costs.forEach((v, i) => {
+      const x = stepX(i), y = pad.t + gh - (v / maxCost) * gh;
       i === 0 ? epochCtx.moveTo(x, y) : epochCtx.lineTo(x, y);
     });
     epochCtx.stroke();
 
     // Accuracy line (orange)
-    epochCtx.strokeStyle = '#ff7f0e';
-    epochCtx.lineWidth = 1.5;
-    epochCtx.beginPath();
-    epochs.forEach((ep, i) => {
-      const x = pad.l + (i / Math.max(epochs.length - 1, 1)) * gw;
-      const y = pad.t + gh - (ep.accuracy || 0) * gh;
-      i === 0 ? epochCtx.moveTo(x, y) : epochCtx.lineTo(x, y);
+    if (m.accuracies && m.accuracies.length) {
+      epochCtx.strokeStyle = COL_BAS;
+      epochCtx.lineWidth = 1.5;
+      epochCtx.beginPath();
+      m.accuracies.forEach((v, i) => {
+        const x = stepX(i), y = pad.t + gh - v * gh;
+        i === 0 ? epochCtx.moveTo(x, y) : epochCtx.lineTo(x, y);
+      });
+      epochCtx.stroke();
+    }
+
+    // Entanglement entropy BAS (light purple)
+    if (m.entropy_bas && m.entropy_bas.length) {
+      epochCtx.strokeStyle = COL_ENTROPY_BAS;
+      epochCtx.lineWidth = 1.2;
+      epochCtx.beginPath();
+      m.entropy_bas.forEach((v, i) => {
+        const x = stepX(i), y = pad.t + gh - (v / maxEntropy) * gh;
+        i === 0 ? epochCtx.moveTo(x, y) : epochCtx.lineTo(x, y);
+      });
+      epochCtx.stroke();
+    }
+
+    // Entanglement entropy non-BAS (dark purple)
+    if (m.entropy_non_bas && m.entropy_non_bas.length) {
+      epochCtx.strokeStyle = COL_ENTROPY_NON;
+      epochCtx.lineWidth = 1.2;
+      epochCtx.beginPath();
+      m.entropy_non_bas.forEach((v, i) => {
+        const x = stepX(i), y = pad.t + gh - (v / maxEntropy) * gh;
+        i === 0 ? epochCtx.moveTo(x, y) : epochCtx.lineTo(x, y);
+      });
+      epochCtx.stroke();
+    }
+
+    // Vertical markers at snapshot steps (0, 100, 200)
+    SNAPSHOT_STEPS.forEach((step, idx) => {
+      const x = stepX(step);
+      const isActive = idx === currentSnapIdx;
+      epochCtx.strokeStyle = isActive ? '#58a6ff' : 'rgba(88,166,255,0.4)';
+      epochCtx.lineWidth = isActive ? 2 : 1;
+      epochCtx.setLineDash(isActive ? [] : [3, 3]);
+      epochCtx.beginPath();
+      epochCtx.moveTo(x, pad.t); epochCtx.lineTo(x, pad.t + gh);
+      epochCtx.stroke();
+      epochCtx.setLineDash([]);
+
+      // Marker dot at bottom
+      epochCtx.fillStyle = isActive ? '#58a6ff' : 'rgba(88,166,255,0.5)';
+      epochCtx.beginPath();
+      epochCtx.arc(x, pad.t + gh + 6, 4, 0, Math.PI * 2);
+      epochCtx.fill();
+
+      // Step label
+      epochCtx.fillStyle = isActive ? '#58a6ff' : '#6e7681';
+      epochCtx.font = '8px monospace';
+      epochCtx.textAlign = 'center';
+      epochCtx.fillText(step.toString(), x, pad.t + gh + 16);
     });
-    epochCtx.stroke();
 
-    // Cursor line
-    const cursorX = pad.l + (currentEpochIdx / Math.max(epochs.length - 1, 1)) * gw;
-    epochCtx.strokeStyle = '#58a6ff';
-    epochCtx.lineWidth = 1.5;
-    epochCtx.beginPath();
-    epochCtx.moveTo(cursorX, pad.t); epochCtx.lineTo(cursorX, pad.t + gh);
-    epochCtx.stroke();
-
-    // Labels
-    epochCtx.fillStyle = '#6e7681';
+    // Legend
     epochCtx.font = '9px monospace';
     epochCtx.textAlign = 'left';
-    epochCtx.fillText('cost', pad.l + 2, pad.t + 10);
-    epochCtx.fillStyle = '#ff7f0e';
-    epochCtx.fillText('acc', pad.l + 30, pad.t + 10);
+    let lx = pad.l + 2;
+    epochCtx.fillStyle = '#8b949e'; epochCtx.fillText('cost', lx, pad.t + 10); lx += 30;
+    epochCtx.fillStyle = COL_BAS; epochCtx.fillText('acc', lx, pad.t + 10); lx += 24;
+    if (m.entropy_bas && m.entropy_bas.length) {
+      epochCtx.fillStyle = COL_ENTROPY_BAS; epochCtx.fillText('S(BAS)', lx, pad.t + 10); lx += 42;
+      epochCtx.fillStyle = COL_ENTROPY_NON; epochCtx.fillText('S(non)', lx, pad.t + 10);
+    }
   }
 
-  // Click on epoch strip to jump
+  // Click on epoch strip to snap to nearest snapshot marker
   document.getElementById('ks-epoch-strip').addEventListener('click', (e) => {
-    if (!activeStudy) return;
+    if (!activeStudy || !activeStudy.data.metrics) return;
     const strip = document.getElementById('ks-epoch-strip');
     const rect = strip.getBoundingClientRect();
-    const pad = { l: 40, r: 16 };
-    const gw = rect.width - pad.l - pad.r;
-    const x = e.clientX - rect.left - pad.l;
-    const frac = Math.max(0, Math.min(1, x / gw));
-    const idx = Math.round(frac * (activeStudy.data.epochs.length - 1));
-    setEpoch(idx);
+    const padL = 40, padR = 16;
+    const gw = rect.width - padL - padR;
+    const numSteps = activeStudy.data.metrics.costs.length || 1;
+    const clickX = e.clientX - rect.left - padL;
+    const clickStep = Math.round((clickX / gw) * (numSteps - 1));
+
+    // Find nearest snapshot step
+    let nearest = 0, nearestDist = Infinity;
+    SNAPSHOT_STEPS.forEach((step, idx) => {
+      const d = Math.abs(clickStep - step);
+      if (d < nearestDist) { nearestDist = d; nearest = idx; }
+    });
+
+    if (nearest < (activeStudy.data.snapshots || []).length) {
+      setSnapshot(nearest);
+    }
+  });
+
+  // ── Reference States rendering ──
+  function renderReferenceStates() {
+    const refPanel = document.getElementById('ks-ref-panel');
+    const refData = activeStudy && activeStudy.data.reference_states;
+    if (!refData) { refPanel.style.display = 'none'; return; }
+
+    refPanel.style.display = 'block';
+    renderRefBars('ks-ref-bas', refData.bas, COL_BAS);
+    renderRefBars('ks-ref-non-bas', refData.non_bas, COL_NON);
+  }
+
+  function renderRefBars(containerId, stateData, color) {
+    const container = document.getElementById(containerId);
+    if (!container || !stateData) { if (container) container.innerHTML = ''; return; }
+
+    const re = stateData.real || [];
+    const im = stateData.imag || [];
+    const probs = re.map((r, i) => r * r + (im[i] || 0) * (im[i] || 0));
+    const maxProb = Math.max(...probs, 0.001);
+
+    container.innerHTML = '';
+    probs.forEach((p, i) => {
+      const bar = document.createElement('div');
+      bar.className = 'ref-bar';
+      bar.style.height = Math.round((p / maxProb) * 24) + 'px';
+      bar.style.background = color;
+      bar.style.opacity = 0.3 + 0.7 * (p / maxProb);
+      bar.title = `|${i.toString(2).padStart(4, '0')}⟩: ${p.toFixed(4)}`;
+      container.appendChild(bar);
+    });
+  }
+
+  // ── Snapshot toggle buttons ──
+  snapBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.snap);
+      if (activeStudy && activeStudy.data.snapshots && idx < activeStudy.data.snapshots.length) {
+        setSnapshot(idx);
+      }
+    });
   });
 
   // File loading
@@ -1489,28 +1629,6 @@ requestAnimationFrame(animate);
 
   studySelect.addEventListener('change', () => selectStudy(parseInt(studySelect.value)));
 
-  let debounceTimer = null;
-  epochSlider.addEventListener('input', () => {
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => setEpoch(parseInt(epochSlider.value)), 50);
-  });
-
-  playBtn.addEventListener('click', () => {
-    ksPlaying = !ksPlaying;
-    playBtn.textContent = ksPlaying ? '⏸ Pause' : '▶ Play';
-    if (ksPlaying) {
-      const fps = parseInt(document.getElementById('ks-fps-select').value) || 3;
-      playInterval = setInterval(() => {
-        if (!activeStudy) return;
-        let next = currentEpochIdx + 1;
-        if (next >= activeStudy.data.epochs.length) { next = 0; }
-        setEpoch(next);
-      }, 1000 / fps);
-    } else {
-      clearInterval(playInterval);
-    }
-  });
-
   colorMode.addEventListener('change', drawScatter);
   document.getElementById('ks-show-threshold').addEventListener('change', drawScatter);
   document.getElementById('ks-threshold-val').addEventListener('input', drawScatter);
@@ -1529,7 +1647,6 @@ requestAnimationFrame(animate);
     drawEpochStrip();
   });
 
-  // Animation loop for smooth transitions
   function ksAnimLoop(now) {
     requestAnimationFrame(ksAnimLoop);
     if (animating) animFrame(now);
