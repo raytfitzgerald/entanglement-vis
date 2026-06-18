@@ -1145,6 +1145,9 @@ rebuildPaths();
 requestAnimationFrame(animate);
 </script>
 
+<!-- JSZip for in-app .npz parsing -->
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+
 <!-- ═══ Kernel Space Tab Logic ═══ -->
 <script>
 (function() {
@@ -1212,6 +1215,136 @@ requestAnimationFrame(animate);
     });
   }
 
+  function readFileAsArrayBuffer(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result);
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  function readEntryAsArrayBuffer(fileEntry) {
+    return new Promise((resolve, reject) => {
+      fileEntry.file(f => {
+        const reader = new FileReader();
+        reader.onload = e => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(f);
+      }, reject);
+    });
+  }
+
+  // ── .npz / .npy parsing ──
+  function parseNpy(buffer) {
+    const bytes = new Uint8Array(buffer);
+    if (bytes[0] !== 0x93) throw new Error('Not a .npy file');
+    const major = bytes[6];
+    let headerLen, offset;
+    if (major === 1) { headerLen = bytes[8] | (bytes[9] << 8); offset = 10; }
+    else             { headerLen = bytes[8] | (bytes[9] << 8) | (bytes[10] << 16) | (bytes[11] << 24); offset = 12; }
+
+    const header = new TextDecoder().decode(bytes.slice(offset, offset + headerLen));
+    const descrM = header.match(/'descr':\s*'([^']+)'/);
+    const shapeM = header.match(/'shape':\s*\(([^)]*)\)/);
+    const descr  = descrM ? descrM[1] : '<f4';
+    const shape  = shapeM ? shapeM[1].split(',').map(s => s.trim()).filter(Boolean).map(Number) : [];
+    const typeChar = descr.slice(-1);
+    const byteW    = parseInt(descr.slice(1, -1)) || 4;
+
+    const TypedArr =
+      typeChar === 'f' && byteW === 4 ? Float32Array :
+      typeChar === 'f' && byteW === 8 ? Float64Array :
+      typeChar === 'i' && byteW === 4 ? Int32Array   :
+      typeChar === 'u' && byteW === 1 ? Uint8Array   : Float32Array;
+
+    const data = new TypedArr(buffer, offset + headerLen);
+    const total = shape.reduce((a, b) => a * b, 1) || data.length;
+    return { data: Array.from(data.subarray(0, total)), shape, dtype: descr };
+  }
+
+  async function parseNpz(buffer) {
+    if (typeof JSZip === 'undefined') throw new Error('JSZip not loaded');
+    const zip = await JSZip.loadAsync(buffer);
+    const arrays = {};
+    for (const [name, file] of Object.entries(zip.files)) {
+      if (name.endsWith('.npy')) {
+        const ab  = await file.async('arraybuffer');
+        arrays[name.replace(/\.npy$/, '')] = parseNpy(ab);
+      }
+    }
+    return arrays;
+  }
+
+  // ── Seeded RNG (mulberry32) ──
+  function mulberry32(seed) {
+    let t = seed >>> 0;
+    return () => {
+      t = (t + 0x6D2B79F5) >>> 0;
+      let z = Math.imul(t ^ (t >>> 15), 1 | t);
+      z = (z + Math.imul(z ^ (z >>> 7), 61 | z)) ^ z;
+      return ((z ^ (z >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // ── In-app classical kernel PCA embedding ──
+  function computeClassicalEmbedding(npzData) {
+    const Xarr = npzData['X'] || npzData['arr_0'];
+    const Yarr = npzData['Y'] || npzData['arr_1'];
+    if (!Xarr || !Yarr) throw new Error('dataset_train.npz must contain X and Y arrays');
+
+    const [n, ...imgDims] = Xarr.shape;
+    const d = imgDims.reduce((a, b) => a * b, 1);
+
+    // Flatten + L2-normalise each image
+    const X = Array.from({ length: n }, (_, i) => {
+      const row = Xarr.data.slice(i * d, (i + 1) * d);
+      const norm = Math.sqrt(row.reduce((s, v) => s + v * v, 0)) || 1;
+      return row.map(v => v / norm);
+    });
+    const Y = Yarr.data.slice(0, n);
+
+    // Linear kernel K = X · Xᵀ
+    const K = Array.from({ length: n }, (_, i) =>
+      Array.from({ length: n }, (_, j) => {
+        let dot = 0;
+        for (let k = 0; k < d; k++) dot += X[i][k] * X[j][k];
+        return dot;
+      })
+    );
+
+    // Double-center K
+    const rowMean  = K.map(r => r.reduce((a, b) => a + b, 0) / n);
+    const totMean  = rowMean.reduce((a, b) => a + b, 0) / n;
+    const Kc = K.map((r, i) => r.map((v, j) => v - rowMean[i] - rowMean[j] + totMean));
+
+    // Power iteration for 2 principal components
+    const rng = mulberry32(42);
+    function powerIter(M, nIter) {
+      let v = Array.from({ length: n }, () => rng() - 0.5);
+      for (let it = 0; it < nIter; it++) {
+        const mv = M.map(row => row.reduce((s, k, j) => s + k * v[j], 0));
+        const nm = Math.sqrt(mv.reduce((s, x) => s + x * x, 0)) || 1;
+        v = mv.map(x => x / nm);
+      }
+      const lam = v.reduce((s, vi, i) => s + vi * M[i].reduce((ss, k, j) => ss + k * v[j], 0), 0);
+      return { v, lam };
+    }
+
+    const { v: v1, lam: l1 } = powerIter(Kc, 200);
+    const Kd = Kc.map((r, i) => r.map((k, j) => k - l1 * v1[i] * v1[j]));
+    const { v: v2, lam: l2 } = powerIter(Kd, 200);
+
+    const s1 = Math.sqrt(Math.abs(l1)), s2 = Math.sqrt(Math.abs(l2));
+    return Array.from({ length: n }, (_, i) => ({
+      id: i,
+      x: parseFloat((v1[i] * s1).toFixed(4)),
+      y: parseFloat((v2[i] * s2).toFixed(4)),
+      label: Math.round(Y[i]),
+      h_score: 0,
+    }));
+  }
+
   // ── Loading bar helpers ──
   function showLoadingBar(pct) {
     document.getElementById('ks-loading').style.display = 'block';
@@ -1248,7 +1381,7 @@ requestAnimationFrame(animate);
   }
 
   // ── Build a study data object from raw run_*.json files ──
-  function buildStudyFromRuns(runs, folderName) {
+  function buildStudyFromRuns(runs, folderName, npzData) {
     function avgLists(lists) {
       if (!lists.length) return [];
       const maxLen = Math.max(...lists.map(l => l.length));
@@ -1285,7 +1418,29 @@ requestAnimationFrame(animate);
       }
     }
 
-    const data = { metadata, snapshots: [], metrics, _no_umap: true, _folder_name: folderName };
+    // Try in-app classical kernel PCA from dataset_train.npz
+    let snapshots = [];
+    let _no_umap = true;
+    let _classical_kernel = false;
+
+    if (npzData) {
+      try {
+        const points = computeClassicalEmbedding(npzData);
+        // All 3 snapshot views use the same classical embedding
+        // (quantum kernel evolution needs the Python export script)
+        snapshots = [
+          { name: 'initial', step: 0,   points: points.map(p => ({ ...p })) },
+          { name: 'halfway', step: 100, points: points.map(p => ({ ...p })) },
+          { name: 'end',     step: 200, points: points.map(p => ({ ...p })) },
+        ];
+        _no_umap = false;
+        _classical_kernel = true;
+      } catch (e) {
+        console.warn('In-app embedding failed:', e.message);
+      }
+    }
+
+    const data = { metadata, snapshots, metrics, _no_umap, _classical_kernel, _folder_name: folderName };
     if (reference_states) data.reference_states = reference_states;
     return data;
   }
@@ -1331,13 +1486,27 @@ requestAnimationFrame(animate);
       try {
         const runs = [];
         for (let i = 0; i < runEntries.length; i++) {
-          updateLoadingBar(Math.round(5 + 85 * (i / runEntries.length)));
+          updateLoadingBar(Math.round(5 + 60 * (i / runEntries.length)));
           runs.push(JSON.parse(await readEntryAsText(runEntries[i])));
         }
-        loadStudy(buildStudyFromRuns(runs, entry.name));
-        setDropZoneLoaded(
-          `✓ ${entry.name}<br><span style="font-size:9px;color:#6e7681">${runs.length} runs · metrics only (no UMAP)</span>`
-        );
+
+        // Try to also load dataset_train.npz for in-app embedding
+        let npzData = null;
+        const npzEntry = allEntries.find(e => e.isFile && e.name === 'dataset_train.npz');
+        if (npzEntry) {
+          updateLoadingBar(70);
+          try {
+            npzData = await parseNpz(await readEntryAsArrayBuffer(npzEntry));
+          } catch (e) { console.warn('Could not parse dataset_train.npz:', e); }
+        }
+
+        updateLoadingBar(90);
+        const study = buildStudyFromRuns(runs, entry.name, npzData);
+        loadStudy(study);
+        const tag = study._classical_kernel
+          ? `<span style="font-size:9px;color:#ffaa00">${runs.length} runs · classical kernel (pixel PCA)</span>`
+          : `<span style="font-size:9px;color:#6e7681">${runs.length} runs · metrics only (no UMAP)</span>`;
+        setDropZoneLoaded(`✓ ${entry.name}<br>${tag}`);
       } catch (err) { alert('Error loading run files: ' + err.message); }
       hideLoadingBar();
       return;
@@ -1383,6 +1552,16 @@ requestAnimationFrame(animate);
     }
 
     if (runsByDir.size > 0) {
+      // Build a map of dir → npz file too
+      const npzByDir = new Map();
+      for (const f of arr) {
+        if (f.name === 'dataset_train.npz') {
+          const parts = f.webkitRelativePath.split('/');
+          const dir   = parts.slice(0, -1).join('/');
+          npzByDir.set(dir, f);
+        }
+      }
+
       showLoadingBar(5);
       let count = 0;
       for (const [dir, runFiles] of runsByDir) {
@@ -1390,10 +1569,17 @@ requestAnimationFrame(animate);
         try {
           const runs = [];
           for (let i = 0; i < sorted.length; i++) {
-            updateLoadingBar(Math.round(5 + 85 * ((count + (i + 1) / sorted.length) / runsByDir.size)));
+            updateLoadingBar(Math.round(5 + 70 * ((count + (i + 1) / sorted.length) / runsByDir.size)));
             runs.push(JSON.parse(await readFileAsText(sorted[i])));
           }
-          loadStudy(buildStudyFromRuns(runs, dir.split('/').pop()));
+
+          let npzData = null;
+          if (npzByDir.has(dir)) {
+            try { npzData = await parseNpz(await readFileAsArrayBuffer(npzByDir.get(dir))); }
+            catch (e) { console.warn('Could not parse dataset_train.npz:', e); }
+          }
+
+          loadStudy(buildStudyFromRuns(runs, dir.split('/').pop(), npzData));
           count++;
         } catch (err) { console.error('Error loading runs from', dir, err); }
       }
@@ -1482,7 +1668,7 @@ requestAnimationFrame(animate);
       metricsEl.style.display = 'none';
       const n   = activeStudy.data.metadata.num_runs || '?';
       const sub = document.getElementById('ks-no-umap-sub');
-      if (sub) sub.textContent = `Training metrics loaded from ${n} run file(s). Generate UMAP scatter by running:`;
+      if (sub) sub.textContent = `Training metrics loaded from ${n} run file(s). Drop the folder again with dataset_train.npz present for in-app embedding, or run:`;
       const cmd = document.getElementById('ks-no-umap-cmd');
       if (cmd) cmd.textContent = `python scripts/export_kernel_umap.py --results-dir "${activeStudy.data._folder_name || '<folder>'}"`;
     } else {
@@ -1610,6 +1796,14 @@ requestAnimationFrame(animate);
     const snapNames = ['Initial', 'Halfway', 'End'];
     scatterCtx.fillStyle = '#58a6ff'; scatterCtx.font = 'bold 12px monospace'; scatterCtx.textAlign = 'left';
     scatterCtx.fillText(snapNames[currentSnapIdx] || '', pad + 4, pad + 16);
+
+    // Classical kernel badge
+    if (activeStudy && activeStudy.data._classical_kernel) {
+      scatterCtx.fillStyle = 'rgba(255,170,0,0.75)';
+      scatterCtx.font = '10px monospace';
+      scatterCtx.textAlign = 'right';
+      scatterCtx.fillText('⚠ classical kernel (pixel PCA) — run export script for quantum kernel', w - pad, pad - 6);
+    }
   }
 
   scatterCanvas.addEventListener('mousemove', (e) => {
